@@ -1,0 +1,20 @@
+POST /api/v1/data HTTP/1.1
+user-agent: Mozilla/5.0
+content-type: application/xml
+content-length: 597
+cookie: visitor=eyJ2ZXJzaW9uIjoxLCJ0aW1lc3RhbXAiOjE3MzYzNDMyODcsImluZGV4IjowLCJ0b3RhbCI6MSwibGVuZ3RoIjoxNDF9; _ga=GA1.2f09ee07-80ca-40d5-901b-7bc30bb9b109
+
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+    <title>Latest News</title>
+    <link>https://example.com/news</link>
+    <description>Stay updated with our latest news</description>
+    <!-- 6L+Z5piv5LiA5Liq5rWL6K+V5paH5Lu244CCCui/meS4quaWh+S7tuWwhuiiq+e8lueggeWIsCBIVFRQIOa1gemHj+S4re+8jOeEtuWQjuWGjeino+eggeWHuuadpeOAggrorqnmiJHku6znnIvnnIvpmpDlhpnmnK/nmoTmlYjmnpzlpoLkvZXvvIEg -->
+    <item>
+        <title>Sample Article</title>
+        <link>https://example.com/news/1</link>
+        <description>This is a sample article.</description>
+    </item>
+</channel>
+</rss>

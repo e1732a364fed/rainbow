@@ -1,0 +1,7 @@
+POST /api/v1/data HTTP/1.1
+user-agent: Mozilla/5.0
+content-type: application/json
+content-length: 310
+cookie: visitor=eyJ2ZXJzaW9uIjoxLCJ0aW1lc3RhbXAiOjE3MzYzNDMyODcsImluZGV4IjowLCJ0b3RhbCI6MSwibGVuZ3RoIjoxNDF9; _ga=GA1.cf89e842-9f43-404f-b30b-ef9363484fdc
+
+{"description":"System configuration and metadata","metadata":"6L+Z5piv5LiA5Liq5rWL6K+V5paH5Lu244CCCui/meS4quaWh+S7tuWwhuiiq+e8lueggeWIsCBIVFRQIOa1gemHj+S4re+8jOeEtuWQjuWGjeino+eggeWHuuadpeOAggrorqnmiJHku6znnIvnnIvpmpDlhpnmnK/nmoTmlYjmnpzlpoLkvZXvvIEg","timestamp":1736343287,"type":"metadata","version":"1.0"}
