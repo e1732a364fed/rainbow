@@ -196,4 +196,21 @@ function utils.generate_uuid()
     end)
 end
 
+-- 生成随机字符串
+function utils.random_string(length)
+    if not length or length <= 0 then
+        return ""
+    end
+
+    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    local result = {}
+
+    for i = 1, length do
+        local random_index = math.random(1, #chars)
+        table.insert(result, chars:sub(random_index, random_index))
+    end
+
+    return table.concat(result)
+end
+
 return utils

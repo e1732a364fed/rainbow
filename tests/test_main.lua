@@ -23,6 +23,11 @@ function TestMain:test_handshake_encode_decode()
     lu.assertNotNil(lengths)
     lu.assertTrue(#packets > 0)
 
+    -- 验证 Cookie 头部存在
+    for _, packet in ipairs(packets) do
+        lu.assertStrContains(packet, "Cookie:")
+    end
+
     -- 服务端解码
     local decoded_parts = {}
     for i, packet in ipairs(packets) do
@@ -37,56 +42,29 @@ function TestMain:test_handshake_encode_decode()
     end
     local decoded = table.concat(decoded_parts)
     lu.assertEquals(decoded, self.test_data)
-
-    -- 测试长数据（使用POST请求）
-    local long_data = string.rep("Long test data ", 100) -- 超过1KB
-    local packets, lengths = rainbow.encode(long_data, true, "application/json")
-    lu.assertNotNil(packets)
-    lu.assertNotNil(lengths)
-    lu.assertTrue(#packets > 0)
-
-    -- 验证基本头部
-    for _, packet in ipairs(packets) do
-        lu.assertStrContains(packet, "Content-Type:")
-        lu.assertStrContains(packet, "Content-Length:")
-    end
-
-    -- 服务端解码
-    local decoded_parts = {}
-    for i, packet in ipairs(packets) do
-        local decoded, expected_length, is_read_end = rainbow.decode(packet, i, false)
-        lu.assertNotNil(decoded)
-        lu.assertNotNil(expected_length)
-        lu.assertFalse(error_handler.is_error(decoded))
-        table.insert(decoded_parts, decoded)
-        if is_read_end then
-            break
-        end
-    end
-    local decoded = table.concat(decoded_parts)
-    lu.assertEquals(decoded, long_data)
 end
 
 -- 测试数据包的编码和解码
 function TestMain:test_data_encode_decode()
     local short_data = "Short test data"
     local packets, lengths = rainbow.encode(short_data, true)
+
+    print("got", packets, lengths)
     lu.assertNotNil(packets)
     lu.assertNotNil(lengths)
     lu.assertTrue(#packets > 0)
+
+    -- 验证 Cookie 头部存在
+    for _, packet in ipairs(packets) do
+        lu.assertStrContains(packet, "Cookie:")
+    end
 
     -- 服务端解码
     local decoded_parts = {}
     for i, packet in ipairs(packets) do
         local decoded, expected_length, is_read_end = rainbow.decode(packet, i, false)
-        -- 打印更多调试信息
-        if error_handler.is_error(decoded) then
-            logger.error("Decode error: %s", decoded.message)
-        end
         lu.assertNotNil(decoded, "Failed to decode packet " .. i)
-        lu.assertFalse(error_handler.is_error(decoded),
-            "Decode error: " .. (error_handler.is_error(decoded) and decoded.message or "unknown error"))
-
+        lu.assertFalse(error_handler.is_error(decoded))
         table.insert(decoded_parts, decoded)
         if is_read_end then
             break
@@ -95,48 +73,34 @@ function TestMain:test_data_encode_decode()
     local decoded = table.concat(decoded_parts)
     lu.assertEquals(decoded, short_data)
 
-    local long_data = string.rep("Long test data ", 100) -- 超过1KB
+    -- 测试长数据
+    local long_data = string.rep("Long test data ", 100)
     local packets, lengths = rainbow.encode(long_data, true)
     lu.assertNotNil(packets)
     lu.assertNotNil(lengths)
     lu.assertTrue(#packets > 0)
 
+    -- 验证基本头部和 Cookie
     for _, packet in ipairs(packets) do
         lu.assertStrContains(packet, "POST")
         lu.assertStrContains(packet, "Content-Type:")
         lu.assertStrContains(packet, "Content-Length:")
-        -- -- POST请求应该包含Origin和Referer
-        -- lu.assertStrContains(packet, "Origin:")
-        -- lu.assertStrContains(packet, "Referer:")
+        lu.assertStrContains(packet, "Cookie:")
     end
 
     -- 服务端解码
     local decoded_parts = {}
     for i, packet in ipairs(packets) do
         local decoded, expected_length, is_read_end = rainbow.decode(packet, i, false)
-        -- 打印更多调试信息
-        if error_handler.is_error(decoded) then
-            logger.error("Decode error in packet %d: %s", i, decoded.message)
-        end
         lu.assertNotNil(decoded, string.format("Failed to decode packet %d", i))
-        lu.assertFalse(error_handler.is_error(decoded),
-            string.format("Decode error in packet %d: %s", i,
-                error_handler.is_error(decoded) and decoded.message or "unknown error"))
-
+        lu.assertFalse(error_handler.is_error(decoded))
         table.insert(decoded_parts, decoded)
         if is_read_end then
             break
         end
     end
 
-    -- 打印调试信息
-    logger.debug("Decoded %d parts", #decoded_parts)
-    for i, part in ipairs(decoded_parts) do
-        logger.debug("Part %d length: %d", i, #part)
-    end
-
     local decoded = table.concat(decoded_parts)
-    logger.debug("Total decoded length: %d, expected: %d", #decoded, #long_data)
     lu.assertEquals(decoded, long_data)
 end
 
@@ -243,7 +207,6 @@ end
 
 -- 测试不同 MIME 类型的编码和解码
 function TestMain:test_different_mime_types()
-    -- 使用长数据来确保使用POST请求
     local test_data = string.rep("Test data for MIME type testing ", 50)
     local mime_types = {
         "text/html",
@@ -253,41 +216,31 @@ function TestMain:test_different_mime_types()
 
     for _, mime_type in ipairs(mime_types) do
         print(string.format("\n测试 MIME 类型: %s", mime_type))
-        -- 使用强制的 MIME 类型进行编码，移除了 PACKET_TYPE 参数
         local packets, lengths = rainbow.encode(test_data, true, mime_type)
 
-        lu.assertNotNil(packets, "编码失败：" .. mime_type)
+        lu.assertNotNil(packets)
         lu.assertTrue(#packets > 0)
 
-        -- 验证所有数据包都使用了指定的 MIME 类型
+        -- 验证所有数据包都使用了指定的 MIME 类型和 Cookie
         for _, packet in ipairs(packets) do
-            -- 提取 Content-Type 头部
-            local content_type = packet:match("[Cc]ontent%-[Tt]ype:%s*([^\r\n]+)")
-            lu.assertNotNil(content_type,
-                string.format("数据包中未找到 Content-Type 头部\n数据包内容:\n%s", packet))
-
-            -- 检查 MIME 类型是否匹配（不区分大小写）
-            local found = content_type:lower():find(mime_type:lower(), 1, true)
-            lu.assertNotNil(found,
-                string.format("数据包使用了错误的 MIME 类型。期望: %s, 实际: %s",
-                    mime_type, content_type))
+            lu.assertStrContains(packet, "Content-Type: " .. mime_type)
+            lu.assertStrContains(packet, "Cookie:")
         end
 
         -- 解码并验证
-        local decoded = rainbow.decode(packets[1], 1, false)
-        for i = 2, #packets do
-            local part = rainbow.decode(packets[i], i, false)
-            if part then
-                decoded = decoded .. part
+        local decoded_parts = {}
+        for i, packet in ipairs(packets) do
+            local decoded, expected_length, is_read_end = rainbow.decode(packet, i, false)
+            lu.assertNotNil(decoded)
+            lu.assertFalse(error_handler.is_error(decoded))
+            table.insert(decoded_parts, decoded)
+            if is_read_end then
+                break
             end
         end
 
-        lu.assertNotNil(decoded, string.format("解码失败：MIME类型 %s", mime_type))
-        lu.assertFalse(error_handler.is_error(decoded),
-            string.format("解码错误：%s",
-                error_handler.is_error(decoded) and decoded.message or "未知错误"))
-        lu.assertEquals(decoded, test_data,
-            string.format("MIME类型 %s 的数据编解码不匹配", mime_type))
+        local decoded = table.concat(decoded_parts)
+        lu.assertEquals(decoded, test_data)
     end
 end
 
@@ -328,18 +281,22 @@ function TestMain:test_get_request_header_encoding()
     local short_data = "Short data for header encoding"
     local packets, lengths = rainbow.encode(short_data, true)
     lu.assertNotNil(packets)
+    lu.assertNotNil(lengths)
     lu.assertTrue(#packets > 0)
+
+    -- 验证 Cookie 头部存在
+    for _, packet in ipairs(packets) do
+        lu.assertStrContains(packet, "Cookie:")
+    end
 
     -- 服务端解码
     local decoded_parts = {}
     for i, packet in ipairs(packets) do
         local decoded, expected_length, is_read_end = rainbow.decode(packet, i, false)
-        lu.assertNotNil(decoded, string.format("第%d个包解码失败", i))
+        lu.assertNotNil(decoded)
         lu.assertNotNil(expected_length)
-        lu.assertFalse(error_handler.is_error(decoded),
-            string.format("第%d个包解码出错: %s", i,
-                error_handler.is_error(decoded) and decoded.message or "未知错误"))
-
+        lu.assertEquals(expected_length, lengths[i])
+        lu.assertFalse(error_handler.is_error(decoded))
         table.insert(decoded_parts, decoded)
         if is_read_end then
             break

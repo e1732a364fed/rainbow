@@ -16,11 +16,86 @@ local ERROR_DETAILS = {
     UNSUPPORTED_MIME_TYPE = "Unsupported MIME type"
 }
 
+-- 添加 Cookie 相关的常量和辅助函数
+local COOKIE_NAMES = {
+    "sessionId",
+    "visitor",
+    "track",
+    "_ga",
+    "_gid",
+    "JSESSIONID",
+    "cf_id"
+}
+
+-- 将包信息编码为 Cookie 值
+local function encode_packet_info(packet_info)
+    if not packet_info then return nil end
+
+
+    -- 构造看起来像正常 Cookie 的值
+    -- 格式: v1.时间戳.total_packets.expected_length.随机值
+
+    local parts = {
+        "v1",
+        tostring(os.time()),
+        packet_info.total_packets and tostring(packet_info.total_packets) or "0",
+        tostring(packet_info.expected_length),
+        utils.random_string(8) -- 添加随机值增加真实性
+    }
+
+
+    -- Base64 编码使其看起来像正常的 Cookie
+    return utils.base64_encode(table.concat(parts, "."))
+end
+
+-- 从 Cookie 值解码包信息
+local function decode_packet_info(cookie_value)
+    if not cookie_value then return nil end
+
+    local decoded = utils.base64_decode(cookie_value)
+    if not decoded then return nil end
+
+    -- 修改正则表达式以正确匹配所有字段
+    local parts = {}
+    for part in decoded:gmatch("[^%.]+") do
+        table.insert(parts, part)
+    end
+
+    -- 确保有足够的部分
+    if #parts >= 5 and parts[1] == "v1" then
+        return {
+            total_packets = tonumber(parts[3]),
+            expected_length = tonumber(parts[4])
+        }
+    end
+
+    return nil
+end
+
+-- 在 rainbow.decode 函数中修改 Cookie 解析部分
+local function parse_cookies(cookie_header)
+    if not cookie_header then return nil end
+
+    -- 遍历所有 cookie
+    for cookie in cookie_header:gmatch("[^;]+") do
+        local name, value = cookie:match("^%s*([^=]+)=(.+)")
+        if name and value then
+            -- 尝试解码每个 cookie 值
+            local packet_info = decode_packet_info(value:match("^%s*(.-)%s*$"))
+            if packet_info then
+                return packet_info
+            end
+        end
+    end
+    return nil
+end
+
 -- 构建 HTTP 请求
 local function build_http_request(method, headers, content, mime_type, path, packet_info)
     if not method then
         method = "POST"
     end
+
 
     -- 如果没有提供路径，生成一个随机的真实路径
     if not path then
@@ -61,13 +136,11 @@ local function build_http_request(method, headers, content, mime_type, path, pac
 
     if method == "GET" then
         -- GET请求：将部分数据编码到headers中
-        if #content <= 1024 then
-            -- 将内容编码到自定义header中
-            local encoded_data = utils.base64_encode(content)
-            headers["X-Data"] = encoded_data
-            headers["Accept"] = "*/*"
-            content = "" -- GET请求不应该有body
-        end
+        -- 将内容编码到自定义header中
+        local encoded_data = utils.base64_encode(content)
+        headers["X-Data"] = encoded_data
+        headers["Accept"] = "*/*"
+        content = "" -- GET请求不应该有body
     else
         -- POST请求：正常设置Content-Type和Content-Length
         headers["Content-Type"] = mime_type
@@ -75,9 +148,10 @@ local function build_http_request(method, headers, content, mime_type, path, pac
         headers["Accept"] = "*/*"
 
         -- 添加一些典型的POST请求头
-        headers["Origin"] = "https://example.com"
-        headers["Referer"] = "https://example.com/"
+        -- headers["Origin"] = "https://example.com"
+        -- headers["Referer"] = "https://example.com/"
     end
+
 
     -- 根据路径添加相关的头部
     if path:match("%.css$") then
@@ -90,13 +164,19 @@ local function build_http_request(method, headers, content, mime_type, path, pac
         headers["Accept"] = "application/json"
         -- headers["X-Requested-With"] = "XMLHttpRequest"
     end
-
-    -- 添加包信息相关的header
     if packet_info then
-        if packet_info.is_first_packet then
-            headers["X-Total-Packets"] = tostring(packet_info.total_packets)
-        end
-        headers["X-Expected-Length"] = tostring(packet_info.expected_length)
+        local cookie_name = COOKIE_NAMES[math.random(#COOKIE_NAMES)]
+        local cookie_value = encode_packet_info(packet_info)
+
+        -- 添加其他真实的 Cookie 来混淆
+        local cookies = {
+            string.format("%s=%s", cookie_name, cookie_value),
+            "_ga=GA1." .. utils.random_string(8),
+            "theme=light",
+            "lang=en-US"
+        }
+
+        headers["Cookie"] = table.concat(cookies, "; ")
     end
 
     -- 添加所有头部（按字母顺序）
@@ -109,6 +189,7 @@ local function build_http_request(method, headers, content, mime_type, path, pac
     for _, name in ipairs(sorted_headers) do
         table.insert(request_lines, string.format("%s: %s\r\n", name, headers[name]))
     end
+
 
     -- 添加空行和内容
     table.insert(request_lines, "\r\n")
@@ -140,6 +221,23 @@ local function build_http_response(headers, content, mime_type, status_code, pac
     headers["Content-Type"] = mime_type
     headers["Content-Length"] = tostring(#content)
 
+    -- 添加 Cookie 信息
+    if packet_info then
+        local cookie_name = COOKIE_NAMES[math.random(#COOKIE_NAMES)]
+
+        local cookie_value = encode_packet_info(packet_info)
+
+        -- 添加其他真实的 Cookie 来混淆
+        local cookies = {
+            string.format("%s=%s", cookie_name, cookie_value),
+            "_ga=GA1." .. utils.random_string(8),
+            "theme=light",
+            "lang=en-US"
+        }
+
+        headers["Cookie"] = table.concat(cookies, "; ")
+    end
+
     -- 添加所有头部
     for name, value in pairs(headers) do
         table.insert(response_lines, string.format("%s: %s\r\n", name, value))
@@ -149,13 +247,6 @@ local function build_http_response(headers, content, mime_type, status_code, pac
     table.insert(response_lines, "\r\n")
     table.insert(response_lines, content)
 
-    -- 添加包信息相关的header
-    if packet_info then
-        if packet_info.is_first_packet then
-            headers["X-Total-Packets"] = tostring(packet_info.total_packets)
-        end
-        headers["X-Expected-Length"] = tostring(packet_info.expected_length)
-    end
 
     return table.concat(response_lines)
 end
@@ -173,6 +264,7 @@ function rainbow.encode(data, is_client, force_mime_type)
 
     return error_handler.try(function()
         local write_seq, expected_lengths = sequence.generate_sequence(data, is_client)
+
         if not write_seq then
             return error_handler.create_error(
                 error_handler.ERROR_TYPE.ENCODE_FAILED,
@@ -207,6 +299,7 @@ function rainbow.encode(data, is_client, force_mime_type)
             else
                 http_packet = build_http_response(headers, encoded_content, mime_type, 200, packet_info)
             end
+
 
             table.insert(http_packets, http_packet)
         end
@@ -264,6 +357,34 @@ local function decode_single_packet(packet, packet_index)
     return decoded
 end
 
+-- 修改 validate_http_packet 函数的实现
+local function validate_http_packet(pkt)
+    -- 添加调试日志
+    logger.debug("Validating HTTP packet format:")
+    logger.debug("First line: %s", pkt:match("^[^\r\n]+"))
+
+    -- 修改正则表达式以更宽松地匹配 HTTP 格式
+    local first_line = pkt:match("^[^\r\n]+")
+    if not first_line then
+        return false
+    end
+
+    -- 检查是否是响应
+    if first_line:match("^HTTP/[%d%.]+%s+%d+") then
+        logger.debug("Valid HTTP response format")
+        return true
+    end
+
+    -- 检查是否是请求
+    if first_line:match("^[A-Z]+%s+[^%s]+%s+HTTP/[%d%.]+") then
+        logger.debug("Valid HTTP request format")
+        return true
+    end
+
+    logger.debug("Invalid HTTP format")
+    return false
+end
+
 -- 解码读取到的单个 packet 为 decoded, expected_return_length, is_read_end
 function rainbow.decode(packet, packet_index, is_client)
     if type(packet) ~= "string" then
@@ -273,25 +394,7 @@ function rainbow.decode(packet, packet_index, is_client)
         )
     end
 
-    -- 验证HTTP包格式
-    local function validate_http_packet(pkt)
-        -- 添加调试日志
-        logger.debug("Validating HTTP packet format:")
-        logger.debug("First line: %s", pkt:match("^[^\r\n]+"))
-
-        if is_client then
-            -- 客户端接收响应
-            local valid = pkt:match("^HTTP/[0-9.]+ %d+ .+\r\n")
-            logger.debug("Validating as client (response): %s", tostring(valid ~= nil))
-            return valid
-        else
-            -- 服务端接收请求
-            local valid = pkt:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n")
-            logger.debug("Validating as server (request): %s", tostring(valid ~= nil))
-            return valid
-        end
-    end
-
+    -- 验证 HTTP 包格式
     if not validate_http_packet(packet) then
         logger.error("Invalid HTTP packet format")
         logger.debug("Packet start: %s", packet:sub(1, 100))
@@ -311,10 +414,18 @@ function rainbow.decode(packet, packet_index, is_client)
         )
     end
 
-    print(header)
+    -- 从 Cookie 中获取包信息
+    local cookie_header = header:match("[Cc]ookie:%s*([^\r\n]+)")
+    local total_packets, expected_return_length
 
-    local total_packets = tonumber(header:match("[Xx]%-[Tt]otal%-[Pp]ackets:%s*(%d+)"))
-    local expected_return_length = tonumber(header:match("[Xx]%-[Ee]xpected%-[Ll]ength:%s*(%d+)"))
+    if cookie_header then
+        local packet_info = parse_cookies(cookie_header)
+        if packet_info then
+            total_packets = packet_info.total_packets
+            expected_return_length = packet_info.expected_length
+        end
+    end
+
 
     -- 解码数据
     local decoded, err = decode_single_packet(packet, packet_index)
