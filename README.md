@@ -4,9 +4,6 @@ rainbow 是一个网络隐写协议项目，可以用于在网络数据包交换
 
 虽然为 网络数据包隐写设计，但是本项目中不含有任何网络数据包交换的代码，而只是提供一对编码和解码的 函数。
 
-rainbow 项目包含两个语言的版本，分别是 lua 版本和 rust 版本。
-
-# Rainbow lua 版本
 
 在 rainbow 目录下
 
@@ -52,12 +49,6 @@ lua tests/run_tests.lua -v TestMain
 ```bash
 lua tests/run_tests.lua
 ```
-
-# Rainbow rust 版本
-
-在 rs 目录下, 为 国际化项目，全项目使用英文。
-
-trait NetworkSteganographyProcessor 是本项目的核心，定义了 encode_write 和 decrypt_single_read 两个方法。
 
 # 人工智能生成的内容
 

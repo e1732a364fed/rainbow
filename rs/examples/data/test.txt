@@ -1,3 +1,0 @@
-This is a test file.
-This file will be encoded into HTTP traffic and then decoded back.
-Let's see how steganography works! 
