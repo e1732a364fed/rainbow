@@ -155,13 +155,4 @@ function TestCSSStego:test_special_characters()
     lu.assertEquals(decoded, special_chars)
 end
 
--- 移除全局的打印函数
--- 使用 logger 模块替代
-local function run_tests()
-    logger.info("Starting CSS stego tests")
-    local runner = lu.LuaUnit.new()
-    runner:setOutputType("text")
-    os.exit(runner:runSuite())
-end
-
-run_tests()
+return TestCSSStego

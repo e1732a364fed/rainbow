@@ -66,4 +66,4 @@ function TestGridStego:test_large_input()
     end
 end
 
-os.exit(lu.LuaUnit.run())
+return TestGridStego

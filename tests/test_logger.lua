@@ -24,6 +24,12 @@ function TestLogger:tearDown()
 end
 
 function TestLogger:test_log_levels()
+    -- 确保使用默认的DEBUG级别开始测试
+    logger.set_level(logger.LEVEL.DEBUG)
+
+    -- 清空日志
+    self.logs = {}
+
     -- 测试默认级别 (DEBUG)
     logger.debug("debug message")
     logger.info("info message")
@@ -49,9 +55,17 @@ function TestLogger:test_log_levels()
 end
 
 function TestLogger:test_format_strings()
+    -- 确保使用DEBUG级别以便能看到所有日志
+    logger.set_level(logger.LEVEL.DEBUG)
+
+    -- 初始化self.logs为空表
+    self.logs = {}
+
+    -- 测试debug级别的格式化
     logger.debug("Test %s %d", "string", 123)
     lu.assertEquals(self.logs[1].msg, "Test string 123")
 
+    -- 测试info级别的格式化
     logger.info("Value: %.2f", 3.14159)
     lu.assertEquals(self.logs[2].msg, "Value: 3.14")
 end

@@ -45,14 +45,4 @@ function TestHtmlStego:test_invalid_input()
     lu.assertEquals(decoded, "")
 end
 
-Info_print = function(str)
-    print("info", str)
-end
-Debug_print = function(str)
-    print("debug", str)
-end
-Warn_print = function(str)
-    print("warn", str)
-end
--- 运行测试
-os.exit(lu.LuaUnit.run())
+return TestHtmlStego

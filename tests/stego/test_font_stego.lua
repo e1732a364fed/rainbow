@@ -51,16 +51,4 @@ function TestFontVariantStego:test_variation_ranges()
     lu.assertStrContains(encoded, "font-style: oblique 0deg 15deg")
 end
 
-print("test file loaded")
-
-Info_print = function(str)
-    print("info", str)
-end
-Debug_print = function(str)
-    print("debug", str)
-end
-Warn_print = function(str)
-    print("warn", str)
-end
-
-os.exit(lu.LuaUnit.run())
+return TestFontVariantStego

@@ -115,13 +115,4 @@ function TestAudioStego:test_audio_format()
     lu.assertStrContains(encoded, "data:audio/wav;base64,", "编码结果应包含正确的数据URL前缀")
 end
 
-Info_print = function(str)
-    print("info", str)
-end
-Debug_print = function(str)
-    print("debug", str)
-end
-Warn_print = function(str)
-    print("warn", str)
-end
-os.exit(lu.LuaUnit.run())
+return TestAudioStego

@@ -98,13 +98,4 @@ function TestHoudiniStego:test_param_value_ranges()
     end
 end
 
-Info_print = function(str)
-    print("info", str)
-end
-Debug_print = function(str)
-    print("debug", str)
-end
-Warn_print = function(str)
-    print("warn", str)
-end
-os.exit(lu.LuaUnit.run())
+return TestHoudiniStego

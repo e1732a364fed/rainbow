@@ -79,4 +79,4 @@ function TestStego:testEncodeDecode()
     lu.assertNil(result)
 end
 
-os.exit(lu.LuaUnit.run())
+return TestStego

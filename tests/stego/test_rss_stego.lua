@@ -86,5 +86,4 @@ function TestRssStego:test_large_data()
     lu.assertEquals(decoded, test_data)
 end
 
--- 运行测试
-os.exit(lu.LuaUnit.run())
+return TestRssStego

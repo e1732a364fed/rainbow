@@ -68,5 +68,4 @@ function TestCompress:testInvalidAlgorithmIdentifier()
     lu.assertNil(result)
 end
 
--- 运行测试
-os.exit(lu.LuaUnit.run())
+return TestCompress

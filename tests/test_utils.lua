@@ -117,5 +117,4 @@ function TestUtils:testHexDumpDetailed()
     lu.assertStrContains(result, "Hi.!") -- 不可打印字符显示为点
 end
 
--- 运行测试
-os.exit(lu.LuaUnit.run())
+return TestUtils

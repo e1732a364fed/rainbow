@@ -105,15 +105,4 @@ function TestPrismStego:test_placeholder_text()
     lu.assertTrue(has_placeholder)
 end
 
-print("test file loaded")
-
-Info_print = function(str)
-    print("info", str)
-end
-Debug_print = function(str)
-    print("debug", str)
-end
-Warn_print = function(str)
-    print("warn", str)
-end
-os.exit(lu.LuaUnit.run())
+return TestPrismStego
