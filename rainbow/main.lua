@@ -7,12 +7,6 @@ local error_handler = require("rainbow.error")
 
 local rainbow = {}
 
--- 数据包类型
-local PACKET_TYPE = {
-    HANDSHAKE = 1,
-    DATA = 2
-}
-
 -- 在 rainbow/main.lua 中添加新的错误类型
 local ERROR_DETAILS = {
     MIME_TYPE_MISSING = "Missing Content-Type header",
@@ -23,7 +17,11 @@ local ERROR_DETAILS = {
 }
 
 -- 构建 HTTP 请求
-local function build_http_request(headers, content, mime_type, path)
+local function build_http_request(method, headers, content, mime_type, path, packet_info)
+    if not method then
+        method = "POST"
+    end
+
     -- 如果没有提供路径，生成一个随机的真实路径
     if not path then
         local paths = {
@@ -36,22 +34,50 @@ local function build_http_request(headers, content, mime_type, path)
             "/blog/latest",
             "/docs/guide"
         }
+        -- 对于POST请求，使用更合适的API路径
+        if method == "POST" then
+            paths = {
+                "/api/v1/data",
+                "/api/v1/upload",
+                "/api/v2/submit",
+                "/upload",
+                "/submit",
+                "/process"
+            }
+        end
         path = paths[math.random(#paths)]
     end
 
     -- 构建请求行
     local request_lines = {
-        string.format("GET %s HTTP/1.1\r\n", path)
+        string.format("%s %s HTTP/1.1\r\n", method, path)
     }
 
     -- 添加基本头部
     headers = headers or {}
     headers["Host"] = "example.com"
     headers["User-Agent"] = "Mozilla/5.0"
-    headers["Accept"] = "*/*"
     headers["Connection"] = "keep-alive"
-    headers["Content-Type"] = mime_type
-    headers["Content-Length"] = tostring(#content)
+
+    if method == "GET" then
+        -- GET请求：将部分数据编码到headers中
+        if #content <= 1024 then
+            -- 将内容编码到自定义header中
+            local encoded_data = utils.base64_encode(content)
+            headers["X-Data"] = encoded_data
+            headers["Accept"] = "*/*"
+            content = "" -- GET请求不应该有body
+        end
+    else
+        -- POST请求：正常设置Content-Type和Content-Length
+        headers["Content-Type"] = mime_type
+        headers["Content-Length"] = tostring(#content)
+        headers["Accept"] = "*/*"
+
+        -- 添加一些典型的POST请求头
+        headers["Origin"] = "https://example.com"
+        headers["Referer"] = "https://example.com/"
+    end
 
     -- 根据路径添加相关的头部
     if path:match("%.css$") then
@@ -63,6 +89,14 @@ local function build_http_request(headers, content, mime_type, path)
     elseif path:match("^/api/") then
         headers["Accept"] = "application/json"
         -- headers["X-Requested-With"] = "XMLHttpRequest"
+    end
+
+    -- 添加包信息相关的header
+    if packet_info then
+        if packet_info.is_first_packet then
+            headers["X-Total-Packets"] = tostring(packet_info.total_packets)
+        end
+        headers["X-Expected-Length"] = tostring(packet_info.expected_length)
     end
 
     -- 添加所有头部（按字母顺序）
@@ -82,15 +116,18 @@ local function build_http_request(headers, content, mime_type, path)
 
     -- 记录调试信息
     logger.debug("Generated HTTP request:")
+    logger.debug("  Method: %s", method)
     logger.debug("  Path: %s", path)
     logger.debug("  MIME type: %s", mime_type)
     logger.debug("  Content length: %d", #content)
+
+
 
     return table.concat(request_lines)
 end
 
 -- 构建 HTTP 响应
-local function build_http_response(headers, content, mime_type, status_code)
+local function build_http_response(headers, content, mime_type, status_code, packet_info)
     local response_lines = {
         string.format("HTTP/1.1 %d OK\r\n", status_code or 200)
     }
@@ -112,14 +149,21 @@ local function build_http_response(headers, content, mime_type, status_code)
     table.insert(response_lines, "\r\n")
     table.insert(response_lines, content)
 
+    -- 添加包信息相关的header
+    if packet_info then
+        if packet_info.is_first_packet then
+            headers["X-Total-Packets"] = tostring(packet_info.total_packets)
+        end
+        headers["X-Expected-Length"] = tostring(packet_info.expected_length)
+    end
+
     return table.concat(response_lines)
 end
 
--- 编码数据为 HTTP 请求/响应序列, packet_type 值是 PACKET_TYPE 之一
-function rainbow.encode(data, is_client, packet_type, force_mime_type)
-    logger.debug("Starting encoding process: client=%s, type=%d", tostring(is_client), packet_type)
+-- 编码要写入的数据为 HTTP 请求/响应序列, 返回 http_packets, expected_lengths
+function rainbow.encode(data, is_client, force_mime_type)
+    logger.debug("Starting encoding process: client=%s", tostring(is_client))
 
-    -- 验证输入数据
     if type(data) ~= "string" then
         return error_handler.create_error(
             error_handler.ERROR_TYPE.INVALID_DATA,
@@ -128,87 +172,75 @@ function rainbow.encode(data, is_client, packet_type, force_mime_type)
     end
 
     return error_handler.try(function()
-        if packet_type == PACKET_TYPE.HANDSHAKE then
-            -- 处理握手请求
-            local requests, response_lengths = handshake.encode_request(data)
-            if not requests then
-                return error_handler.create_error(
-                    error_handler.ERROR_TYPE.ENCODE_FAILED,
-                    "Failed to encode handshake request"
-                )
-            end
-
-            local http_packets = {}
-            for _, request in ipairs(requests) do
-                -- 强制使用 JSON 编码器
-                request.mime_type = "application/json"
-                local http_request = build_http_request(
-                    request.headers or {},
-                    request.content,
-                    request.mime_type,
-                    request.path
-                )
-                table.insert(http_packets, http_request)
-            end
-
-            logger.info("Successfully encoded handshake request with %d packets", #http_packets)
-            return http_packets, response_lengths
-        else
-            -- 处理数据传输
-            local write_seq, read_seq = sequence.generate_sequence(data, is_client)
-            if not write_seq then
-                return error_handler.create_error(
-                    error_handler.ERROR_TYPE.ENCODE_FAILED,
-                    "Failed to generate sequence"
-                )
-            end
-
-            local http_packets = {}
-            local expected_lengths = read_seq
-
-            for i, chunk in ipairs(write_seq) do
-                -- 使用强制的 MIME 类型或随机选择一个
-                local mime_type = force_mime_type or stego.get_random_mime_type()
-                local headers = utils.generate_realistic_headers()
-
-                -- 使用 stego 模块进行编码
-                local encoded_content = stego.encode_mime(chunk, mime_type)
-                if not encoded_content then
-                    return error_handler.create_error(
-                        error_handler.ERROR_TYPE.ENCODE_FAILED,
-                        "Failed to encode data"
-                    )
-                end
-
-                -- 构建 HTTP 包
-                local http_packet
-                if is_client then
-                    http_packet = build_http_request(headers, encoded_content, mime_type, nil)
-                else
-                    http_packet = build_http_response(headers, encoded_content, mime_type, 200)
-                end
-
-                table.insert(http_packets, http_packet)
-            end
-
-            if #http_packets == 0 then
-                return error_handler.create_error(
-                    error_handler.ERROR_TYPE.ENCODE_FAILED,
-                    "No packets generated"
-                )
-            end
-
-            return http_packets, expected_lengths
+        local write_seq, expected_lengths = sequence.generate_sequence(data, is_client)
+        if not write_seq then
+            return error_handler.create_error(
+                error_handler.ERROR_TYPE.ENCODE_FAILED,
+                "Failed to generate sequence"
+            )
         end
+
+        local http_packets = {}
+        for i, chunk in ipairs(write_seq) do
+            local mime_type = force_mime_type or stego.get_random_mime_type()
+            local headers = utils.generate_realistic_headers()
+
+            local encoded_content = stego.encode_mime(chunk, mime_type)
+            if not encoded_content then
+                return error_handler.create_error(
+                    error_handler.ERROR_TYPE.ENCODE_FAILED,
+                    "Failed to encode data"
+                )
+            end
+
+            -- 构建包信息
+            local packet_info = {
+                expected_length = expected_lengths[i],
+                is_first_packet = (i == 1),
+                total_packets = #write_seq
+            }
+
+            -- 构建 HTTP 包
+            local http_packet
+            if is_client then
+                http_packet = build_http_request(nil, headers, encoded_content, mime_type, nil, packet_info)
+            else
+                http_packet = build_http_response(headers, encoded_content, mime_type, 200, packet_info)
+            end
+
+            table.insert(http_packets, http_packet)
+        end
+
+        if #http_packets == 0 then
+            return error_handler.create_error(
+                error_handler.ERROR_TYPE.ENCODE_FAILED,
+                "No packets generated"
+            )
+        end
+
+        return http_packets, expected_lengths
     end)
 end
 
--- 添加一个新的辅助函数来处理包的解码
-local function decode_single_packet(packet, packet_type, packet_index)
-    -- 提取 MIME 类型和内容
-    local mime_type = packet:match("[Cc]ontent%-[Tt]ype:%s*([^%s;,\r\n]+)")
-    local content = packet:match("\r\n\r\n(.+)$")
+local function decode_single_packet(packet, packet_index)
+    local header, content = packet:match("(.-)\r\n\r\n(.*)$")
+    if not header then
+        return nil, ERROR_DETAILS.INVALID_PACKET_FORMAT
+    end
 
+    -- 获取请求方法
+    local first_line = header:match("^[^\r\n]+")
+    local is_get = first_line and first_line:match("^GET")
+
+    if is_get then
+        -- 从header中解码数据
+        local encoded_data = header:match("[Xx]%-[Dd]ata:%s*([^%s\r\n]+)")
+        if encoded_data then
+            return utils.base64_decode(encoded_data)
+        end
+    end
+
+    local mime_type = header:match("[Cc]ontent%-[Tt]ype:%s*([^%s;,\r\n]+)")
     if not mime_type then
         return nil, ERROR_DETAILS.MIME_TYPE_MISSING
     end
@@ -217,110 +249,87 @@ local function decode_single_packet(packet, packet_type, packet_index)
         return nil, ERROR_DETAILS.CONTENT_MISSING
     end
 
-    -- 记录调试信息
     logger.debug("Processing packet %d:", packet_index)
     logger.debug("  MIME type: %s", mime_type)
     logger.debug("  Content length: %d", #content)
 
-    -- 解码内容
+    -- 添加调试日志
     local decoded = stego.decode_mime(content, mime_type)
     if not decoded then
-        return nil, ERROR_DETAILS.UNSUPPORTED_MIME_TYPE
+        logger.error("Failed to decode content with MIME type: %s", mime_type)
+        return nil, "Failed to decode content"
     end
 
-    if packet_type == PACKET_TYPE.HANDSHAKE then
-        -- 对于握手包，需要解码 Base64 数据
-        local final_decoded = utils.base64_decode(decoded)
-        if not final_decoded then
-            return nil, ERROR_DETAILS.BASE64_DECODE_FAILED
-        end
-        return final_decoded
-    end
-
+    logger.debug("Successfully decoded content: length=%d", #decoded)
     return decoded
 end
 
--- 修改 decode 函数中的处理逻辑
-function rainbow.decode(packets, is_client, packet_type)
-    -- 输入验证
-    if type(packets) ~= "table" and type(packets) ~= "string" then
+-- 解码读取到的单个 packet 为 decoded, expected_return_length, is_read_end
+function rainbow.decode(packet, packet_index, is_client)
+    if type(packet) ~= "string" then
         return error_handler.create_error(
             error_handler.ERROR_TYPE.INVALID_DATA,
-            "Packets must be either a table or string"
+            "Packet must be a string"
         )
     end
 
-    -- 如果输入是字符串，转换为表
-    if type(packets) == "string" then
-        -- 如果输入是单个字符串且不包含 HTTP 头部，返回 INVALID_DATA
-        if not packets:match("HTTP/[0-9.]+") and not packets:match(" HTTP/[0-9.]+") then
-            return error_handler.create_error(
-                error_handler.ERROR_TYPE.INVALID_DATA,
-                "Invalid packet format"
-            )
-        end
-        packets = { packets }
-    end
+    -- 验证HTTP包格式
+    local function validate_http_packet(pkt)
+        -- 添加调试日志
+        logger.debug("Validating HTTP packet format:")
+        logger.debug("First line: %s", pkt:match("^[^\r\n]+"))
 
-    -- 添加对 is_client 的处理逻辑
-    local function validate_http_packet(packet)
         if is_client then
-            -- 客户端模式：验证 HTTP 响应格式
-            return packet:match("^HTTP/[0-9.]+ %d+ .+\r\n")
+            -- 客户端接收响应
+            local valid = pkt:match("^HTTP/[0-9.]+ %d+ .+\r\n")
+            logger.debug("Validating as client (response): %s", tostring(valid ~= nil))
+            return valid
         else
-            -- 服务器模式：验证 HTTP 请求格式
-            return packet:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n")
+            -- 服务端接收请求
+            local valid = pkt:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n")
+            logger.debug("Validating as server (request): %s", tostring(valid ~= nil))
+            return valid
         end
     end
 
-    -- 验证每个数据包
-    local decode_errors = {}
-    local all_decoded = {}
-    for i, packet in ipairs(packets) do
-        if type(packet) ~= "string" then
-            table.insert(decode_errors, {
-                packet = i,
-                reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
-            })
-            goto next_packet
-        end
-
-        if not validate_http_packet(packet) then
-            table.insert(decode_errors, {
-                packet = i,
-                reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
-            })
-            goto next_packet
-        end
-
-        local decoded, err = decode_single_packet(packet, packet_type, i)
-        if decoded then
-            table.insert(all_decoded, decoded)
-        else
-            table.insert(decode_errors, {
-                packet = i,
-                reason = err
-            })
-        end
-
-        ::next_packet::
+    if not validate_http_packet(packet) then
+        logger.error("Invalid HTTP packet format")
+        logger.debug("Packet start: %s", packet:sub(1, 100))
+        return error_handler.create_error(
+            error_handler.ERROR_TYPE.INVALID_DATA,
+            "Invalid packet format"
+        )
     end
 
-    -- 如果没有成功解码任何包
-    if #all_decoded == 0 then
-        local error_msg = "Failed to decode packets:\n"
-        for _, err in ipairs(decode_errors) do
-            error_msg = error_msg .. string.format("  Packet %d: %s\n",
-                err.packet, err.reason)
-        end
+    -- 获取包信息
+    local header = packet:match("(.-)\r\n\r\n")
+    if not header then
+        logger.error("Failed to extract header")
+        return error_handler.create_error(
+            error_handler.ERROR_TYPE.INVALID_DATA,
+            "Invalid packet format: no header found"
+        )
+    end
+
+    print(header)
+
+    local total_packets = tonumber(header:match("[Xx]%-[Tt]otal%-[Pp]ackets:%s*(%d+)"))
+    local expected_return_length = tonumber(header:match("[Xx]%-[Ee]xpected%-[Ll]ength:%s*(%d+)"))
+
+    -- 解码数据
+    local decoded, err = decode_single_packet(packet, packet_index)
+    if not decoded then
+        logger.error("Failed to decode packet: %s", err or "unknown error")
         return error_handler.create_error(
             error_handler.ERROR_TYPE.DECODE_FAILED,
-            error_msg
+            err or "Failed to decode packet"
         )
     end
 
-    -- 返回所有解码后的数据
-    return table.concat(all_decoded)
+    -- 判断是否是最后一个包
+    local is_read_end = total_packets and (packet_index == total_packets)
+
+    return decoded, expected_return_length, is_read_end
 end
 
 -- 验证数据包长度
@@ -345,8 +354,5 @@ function rainbow.verify_length(packet, expected_length)
     logger.warn("Content-Length header not found")
     return false
 end
-
--- 导出包类型常量
-rainbow.PACKET_TYPE = PACKET_TYPE
 
 return rainbow
