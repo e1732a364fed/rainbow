@@ -37,4 +37,5 @@ luacov.stats.out
 # 环境配置文件
 .env 
 
-rs/target/
+target/
+Cargo.lock
