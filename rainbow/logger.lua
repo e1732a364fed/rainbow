@@ -7,8 +7,8 @@ logger.LEVEL = {
     WARN = 3
 }
 
--- 当前日志级别（默认为 INFO）
-local current_level = logger.LEVEL.INFO
+-- 当前日志级别（默认为 DEBUG）
+local current_level = logger.LEVEL.DEBUG
 
 -- 设置日志级别
 function logger.set_level(level)

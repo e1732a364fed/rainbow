@@ -166,7 +166,8 @@ end
 mime.encoders = {
     ["text/html"] = html_encoder,
     ["application/json"] = json_encoder,
-    ["text/html+css"] = require("rainbow.css_stego").css_encoder
+    ["text/html+css"] = require("rainbow.css_stego").css_encoder,
+    ["text/html+prism"] = require("rainbow.prism_stego")
 }
 
 -- 获取随机 MIME 类型

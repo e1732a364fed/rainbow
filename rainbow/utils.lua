@@ -52,4 +52,43 @@ function utils.random_packet_size()
     return size
 end
 
+function utils.hex_dump(str)
+    if not str or str == "" then
+        return "<empty string>"
+    end
+
+    local result = {}
+    for i = 1, #str do
+        table.insert(result, string.format("%02X", str:byte(i)))
+    end
+    return table.concat(result, " ")
+end
+
+-- 可选：添加一个更详细的十六进制打印函数
+function utils.hex_dump_detailed(str)
+    if not str or str == "" then
+        return "<empty string>"
+    end
+
+    local result = {
+        "Length: " .. #str .. " bytes",
+        "Hex: " .. utils.hex_dump(str),
+        "ASCII: "
+    }
+
+    -- 添加 ASCII 表示（可打印字符显示原字符，不可打印字符显示点）
+    local ascii = {}
+    for i = 1, #str do
+        local byte = str:byte(i)
+        if byte >= 32 and byte <= 126 then
+            table.insert(ascii, string.char(byte))
+        else
+            table.insert(ascii, ".")
+        end
+    end
+    table.insert(result, table.concat(ascii))
+
+    return table.concat(result, "\n")
+end
+
 return utils
