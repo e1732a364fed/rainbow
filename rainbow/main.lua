@@ -116,7 +116,7 @@ local function build_http_response(headers, content, mime_type, status_code)
 end
 
 -- 编码数据为 HTTP 请求/响应序列, packet_type 值是 PACKET_TYPE 之一
-function rainbow.encode(data, is_client, packet_type)
+function rainbow.encode(data, is_client, packet_type, force_mime_type)
     logger.debug("Starting encoding process: client=%s, type=%d", tostring(is_client), packet_type)
 
     -- 验证输入数据
@@ -164,11 +164,11 @@ function rainbow.encode(data, is_client, packet_type)
             end
 
             local http_packets = {}
-            local expected_lengths = read_seq --{}
+            local expected_lengths = read_seq
 
             for i, chunk in ipairs(write_seq) do
-                -- 随机选择一个 MIME 类型
-                local mime_type = stego.get_random_mime_type()
+                -- 使用强制的 MIME 类型或随机选择一个
+                local mime_type = force_mime_type or stego.get_random_mime_type()
                 local headers = utils.generate_realistic_headers()
 
                 -- 使用 stego 模块进行编码
@@ -180,11 +180,6 @@ function rainbow.encode(data, is_client, packet_type)
                     )
                 end
 
-                -- 添加编码器信息到头部
-                if encoder then
-                    headers["X-Encoder"] = encoder
-                end
-
                 -- 构建 HTTP 包
                 local http_packet
                 if is_client then
@@ -194,8 +189,6 @@ function rainbow.encode(data, is_client, packet_type)
                 end
 
                 table.insert(http_packets, http_packet)
-                -- read_seq 总是会被生成，所以我们可以直接使用它
-                -- table.insert(expected_lengths, read_seq[i])
             end
 
             if #http_packets == 0 then
@@ -215,7 +208,6 @@ local function decode_single_packet(packet, packet_type, packet_index)
     -- 提取 MIME 类型和内容
     local mime_type = packet:match("[Cc]ontent%-[Tt]ype:%s*([^%s;,\r\n]+)")
     local content = packet:match("\r\n\r\n(.+)$")
-    local encoder = packet:match("[Xx]%-[Ee]ncoder:%s*([^%s;,\r\n]+)")
 
     if not mime_type then
         return nil, ERROR_DETAILS.MIME_TYPE_MISSING
@@ -229,12 +221,9 @@ local function decode_single_packet(packet, packet_type, packet_index)
     logger.debug("Processing packet %d:", packet_index)
     logger.debug("  MIME type: %s", mime_type)
     logger.debug("  Content length: %d", #content)
-    if encoder then
-        logger.debug("  Encoder: %s", encoder)
-    end
 
     -- 解码内容
-    local decoded = stego.decode_mime(content, mime_type, encoder)
+    local decoded = stego.decode_mime(content, mime_type)
     if not decoded then
         return nil, ERROR_DETAILS.UNSUPPORTED_MIME_TYPE
     end

@@ -174,24 +174,81 @@ end
 
 -- 测试不同 MIME 类型的编码和解码
 function TestMain:test_different_mime_types()
-    local data = "Test data for different MIME types"
+    local test_data = "Test data for MIME type testing"
+    local mime_types = {
+        "text/html",
+        "application/json",
+        "application/xml"
+    }
 
-    -- 编码和解码
-    local packets, lengths = rainbow.encode(data, true, rainbow.PACKET_TYPE.DATA)
-    lu.assertNotNil(packets)
-    lu.assertTrue(#packets > 0)
+    for _, mime_type in ipairs(mime_types) do
+        print(string.format("\n测试 MIME 类型: %s", mime_type))
+        -- 使用强制的 MIME 类型进行编码
+        local packets, lengths = rainbow.encode(test_data, true, rainbow.PACKET_TYPE.DATA, mime_type)
 
-    -- 验证基本头部
-    for _, packet in ipairs(packets) do
-        lu.assertStrContains(packet, "Content-Type:")
-        lu.assertStrContains(packet, "Content-Length:")
+        lu.assertNotNil(packets, "编码失败：" .. mime_type)
+        lu.assertTrue(#packets > 0)
+
+        -- 打印编码后的数据包
+        print("\n编码后的数据包:")
+        for i, packet in ipairs(packets) do
+            print(string.format("\n包 %d:\n%s", i, packet))
+        end
+
+        -- 验证所有数据包都使用了指定的 MIME 类型
+        for _, packet in ipairs(packets) do
+            local content_type_line = "Content-Type: " .. mime_type
+            local content_type_line_lower = content_type_line:lower()
+            local packet_lower = packet:lower()
+
+            local found = packet_lower:find(content_type_line_lower, 1, true) ~= nil
+
+            lu.assertTrue(found,
+                string.format("数据包未使用指定的 MIME 类型 %s\n数据包内容:\n%s", mime_type, packet))
+        end
+
+        -- 解码并验证
+        local decoded = rainbow.decode(packets, false, rainbow.PACKET_TYPE.DATA)
+        print(string.format("\n解码结果: %s", decoded))
+
+        lu.assertNotNil(decoded)
+        lu.assertFalse(error_handler.is_error(decoded))
+        lu.assertEquals(decoded, test_data,
+            string.format("MIME类型 %s 的数据编解码不匹配", mime_type))
     end
+end
 
-    -- 解码并验证
-    local decoded = rainbow.decode(packets, false, rainbow.PACKET_TYPE.DATA)
-    lu.assertNotNil(decoded)
-    lu.assertFalse(error_handler.is_error(decoded))
-    lu.assertEquals(decoded, data)
+-- 测试所有可用的编码器
+function TestMain:test_different_encoders()
+    local test_data = "Test data for encoder testing"
+    local encoders = {
+        "html",
+        "css",
+        "prism",
+        "font",
+        "svg",
+        "json",
+        "xml",
+        "rss"
+        -- 注：audio 编码器可能需要特殊的二进制数据格式，暂时不测试
+    }
+
+    for _, encoder_name in ipairs(encoders) do
+        -- 使用编码器名称进行编码
+        local encoded = stego.encode_by_encoder(test_data, encoder_name)
+        lu.assertNotNil(encoded,
+            string.format("编码器 %s 编码失败", encoder_name))
+
+        -- 使用对应的编码器实例进行解码
+        local decoder = stego[encoder_name]
+        local decoded = decoder.decode(encoded)
+        lu.assertNotNil(decoded,
+            string.format("编码器 %s 解码失败", encoder_name))
+
+        -- 验证编解码结果
+        lu.assertEquals(decoded, test_data,
+            string.format("编码器 %s 的数据编解码不匹配", encoder_name))
+    end
 end
 
 return TestMain

@@ -39,8 +39,13 @@ function html_encoder.decode(html_content)
         return ""
     end
 
-    -- 提取注释中的数据，使用更精确的模式匹配
-    local data = html_content:match("<!%-%-(.-)%-%->")
+    -- 首先尝试提取带标识符的数据
+    local data = html_content:match("<!%-%-[%x][%x][%x][%x](.-)%-%->")
+    if not data then
+        -- 如果没有找到带标识符的数据，尝试提取普通注释数据
+        data = html_content:match("<!%-%-(.-)%-%->")
+    end
+
     if data then
         -- 还原转义的注释标记
         data = data:gsub("&#45;&#45;", "--")
