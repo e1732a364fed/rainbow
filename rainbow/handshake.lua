@@ -1,4 +1,4 @@
-local mime = require("rainbow.mime_encoder")
+local stego = require("rainbow.stego")
 local sequence = require("rainbow.sequence")
 local utils = require("rainbow.utils")
 local logger = require("rainbow.logger")
@@ -75,9 +75,17 @@ function handshake.encode_request(target_address)
 
     -- 使用随机的 MIME 类型来编码每个请求的内容
     for _, request in ipairs(requests) do
-        local mime_type = mime.get_random_mime_type()
-        request.mime_type = mime_type
-        request.content = mime.encode(request.data, mime_type)
+        local mime_type = stego.get_random_mime_type()
+        local content, encoder = stego.encode_mime(request.data, mime_type)
+        if content then
+            request.mime_type = mime_type
+            request.content = content
+            request.encoder = encoder -- 保存使用的编码器以便解码时使用
+        else
+            -- 如果编码失败，使用纯文本
+            request.mime_type = "text/plain"
+            request.content = request.data
+        end
     end
 
     logger.info("Generated handshake request with %d packets", #requests)
@@ -92,7 +100,7 @@ function handshake.decode_request(request_sequence)
 
     -- 从请求序列中提取数据
     for _, request in ipairs(request_sequence) do
-        local decoded = mime.decode(request.content, request.mime_type)
+        local decoded = stego.decode_mime(request.content, request.mime_type, request.encoder)
         if decoded then
             table.insert(data_parts, decoded)
         end
@@ -129,11 +137,13 @@ function handshake.encode_response(success, error_message)
     local request_lengths = {}
 
     for i = 1, #write_seq do
-        local mime_type = mime.get_random_mime_type()
+        local mime_type = stego.get_random_mime_type()
+        local content, encoder = stego.encode_mime(write_seq[i], mime_type)
         local response = {
             headers = utils.generate_realistic_headers(),
             mime_type = mime_type,
-            content = mime.encode(write_seq[i], mime_type),
+            content = content,
+            encoder = encoder, -- 保存使用的编码器以便解码时使用
             expected_request_length = read_seq[i]
         }
         table.insert(responses, response)
@@ -152,7 +162,7 @@ function handshake.decode_response(response_sequence)
 
     -- 从响应序列中提取数据
     for _, response in ipairs(response_sequence) do
-        local decoded = mime.decode(response.content, response.mime_type)
+        local decoded = stego.decode_mime(response.content, response.mime_type, response.encoder)
         if decoded then
             table.insert(data_parts, decoded)
         end
@@ -161,11 +171,19 @@ function handshake.decode_response(response_sequence)
     -- 解析 JSON 响应
     local json_str = table.concat(data_parts)
     local status = json_str:match('"s":"([^"]+)"')
-    local message = json_str:match('"m":"([^"]+)"')
+    local message = json_str:match('"m":"([^"]*)"')
+
+    -- 如果解析失败，返回错误状态
+    if not status then
+        return {
+            success = false,
+            error_message = "Invalid response format"
+        }
+    end
 
     local result = {
         success = (status == "ok"),
-        error_message = message
+        error_message = message or ""
     }
 
     if not result.success then
