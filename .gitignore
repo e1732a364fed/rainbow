@@ -1,0 +1,38 @@
+# Lua 编译文件
+*.lua[cx]
+*.dll
+*.so
+*.dylib
+
+# Lua 包管理器生成的文件
+.rocks/
+lua_modules/
+
+# IDE 和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 临时文件
+tmp/
+temp/
+
+# 构建输出目录
+build/
+dist/
+
+# 测试覆盖率报告
+luacov.report.out
+luacov.stats.out
+
+# 环境配置文件
+.env 
