@@ -13,6 +13,15 @@ local PACKET_TYPE = {
     DATA = 2
 }
 
+-- 在 rainbow/main.lua 中添加新的错误类型
+local ERROR_DETAILS = {
+    MIME_TYPE_MISSING = "Missing Content-Type header",
+    CONTENT_MISSING = "Missing content body",
+    BASE64_DECODE_FAILED = "Failed to decode Base64 data",
+    INVALID_PACKET_FORMAT = "Invalid packet format",
+    UNSUPPORTED_MIME_TYPE = "Unsupported MIME type"
+}
+
 -- 构建 HTTP 请求
 local function build_http_request(headers, content, mime_type, path)
     -- 如果没有提供路径，生成一个随机的真实路径
@@ -224,10 +233,13 @@ function rainbow.decode(packets, is_client, packet_type)
     end
 
     -- 验证每个数据包
-    local decode_errors = 0
+    local decode_errors = {}
     for i, packet in ipairs(packets) do
         if type(packet) ~= "string" then
-            decode_errors = decode_errors + 1
+            table.insert(decode_errors, {
+                packet = i,
+                reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
+            })
             goto continue
         end
 
@@ -235,9 +247,11 @@ function rainbow.decode(packets, is_client, packet_type)
         local is_valid_http = packet:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n") or
             packet:match("^HTTP/[0-9.]+ %d+ .+\r\n")
 
-        -- 如果不是有效的 HTTP 包，尝试下一个包
         if not is_valid_http then
-            decode_errors = decode_errors + 1
+            table.insert(decode_errors, {
+                packet = i,
+                reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
+            })
             goto continue
         end
 
@@ -246,10 +260,19 @@ function rainbow.decode(packets, is_client, packet_type)
         local content = packet:match("\r\n\r\n(.+)$")
         local encoder = packet:match("[Xx]%-[Ee]ncoder:%s*([^%s;,\r\n]+)")
 
-        -- 如果缺少必要的头部或内容，尝试下一个包
-        if not mime_type or not content then
-            logger.error("Invalid packet format in packet %d", i)
-            decode_errors = decode_errors + 1
+        if not mime_type then
+            table.insert(decode_errors, {
+                packet = i,
+                reason = ERROR_DETAILS.MIME_TYPE_MISSING
+            })
+            goto continue
+        end
+
+        if not content then
+            table.insert(decode_errors, {
+                packet = i,
+                reason = ERROR_DETAILS.CONTENT_MISSING
+            })
             goto continue
         end
 
@@ -269,22 +292,35 @@ function rainbow.decode(packets, is_client, packet_type)
                 local final_decoded = utils.base64_decode(decoded)
                 if final_decoded then
                     return final_decoded
+                else
+                    table.insert(decode_errors, {
+                        packet = i,
+                        reason = ERROR_DETAILS.BASE64_DECODE_FAILED
+                    })
                 end
             else
-                -- 对于数据包，直接返回解码后的数据
                 return decoded
             end
         else
-            decode_errors = decode_errors + 1
+            table.insert(decode_errors, {
+                packet = i,
+                reason = ERROR_DETAILS.UNSUPPORTED_MIME_TYPE
+            })
         end
 
         ::continue::
     end
 
-    -- 如果所有包都解码失败，返回 DECODE_FAILED
+    -- 如果所有包都解码失败，返回详细的错误信息
+    local error_msg = "Failed to decode packets:\n"
+    for _, err in ipairs(decode_errors) do
+        error_msg = error_msg .. string.format("  Packet %d: %s\n",
+            err.packet, err.reason)
+    end
+
     return error_handler.create_error(
         error_handler.ERROR_TYPE.DECODE_FAILED,
-        "Failed to decode any packet"
+        error_msg
     )
 end
 
