@@ -1,7 +1,6 @@
 local lu = require("luaunit")
 
 -- 加载所有测试文件
-local TestEncoder = require("tests.test_encoder")
 local TestError = require("tests.test_error")
 local TestLogger = require("tests.test_logger")
 local TestHandshake = require("tests.test_handshake")

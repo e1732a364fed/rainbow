@@ -46,7 +46,7 @@ function handshake.encode_request(target)
 
     -- 构建请求序列
     local requests = {}
-    local response_lengths = {}
+    local response_lengths = read_seq
 
     for i, chunk in ipairs(write_seq) do
         -- 使用 JSON 编码器
@@ -75,7 +75,6 @@ function handshake.encode_request(target)
         logger.debug("  Content length: %d", #request.content)
 
         table.insert(requests, request)
-        table.insert(response_lengths, read_seq[i])
     end
 
     if #requests == 0 then

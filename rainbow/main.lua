@@ -115,7 +115,7 @@ local function build_http_response(headers, content, mime_type, status_code)
     return table.concat(response_lines)
 end
 
--- 编码数据为 HTTP 请求/响应序列
+-- 编码数据为 HTTP 请求/响应序列, packet_type 值是 PACKET_TYPE 之一
 function rainbow.encode(data, is_client, packet_type)
     logger.debug("Starting encoding process: client=%s, type=%d", tostring(is_client), packet_type)
 
@@ -164,7 +164,7 @@ function rainbow.encode(data, is_client, packet_type)
             end
 
             local http_packets = {}
-            local expected_lengths = {}
+            local expected_lengths = read_seq --{}
 
             for i, chunk in ipairs(write_seq) do
                 -- 随机选择一个 MIME 类型
@@ -195,7 +195,7 @@ function rainbow.encode(data, is_client, packet_type)
 
                 table.insert(http_packets, http_packet)
                 -- read_seq 总是会被生成，所以我们可以直接使用它
-                table.insert(expected_lengths, read_seq[i])
+                -- table.insert(expected_lengths, read_seq[i])
             end
 
             if #http_packets == 0 then
@@ -210,7 +210,48 @@ function rainbow.encode(data, is_client, packet_type)
     end)
 end
 
--- 从 HTTP 请求/响应中解码数据
+-- 添加一个新的辅助函数来处理包的解码
+local function decode_single_packet(packet, packet_type, packet_index)
+    -- 提取 MIME 类型和内容
+    local mime_type = packet:match("[Cc]ontent%-[Tt]ype:%s*([^%s;,\r\n]+)")
+    local content = packet:match("\r\n\r\n(.+)$")
+    local encoder = packet:match("[Xx]%-[Ee]ncoder:%s*([^%s;,\r\n]+)")
+
+    if not mime_type then
+        return nil, ERROR_DETAILS.MIME_TYPE_MISSING
+    end
+
+    if not content then
+        return nil, ERROR_DETAILS.CONTENT_MISSING
+    end
+
+    -- 记录调试信息
+    logger.debug("Processing packet %d:", packet_index)
+    logger.debug("  MIME type: %s", mime_type)
+    logger.debug("  Content length: %d", #content)
+    if encoder then
+        logger.debug("  Encoder: %s", encoder)
+    end
+
+    -- 解码内容
+    local decoded = stego.decode_mime(content, mime_type, encoder)
+    if not decoded then
+        return nil, ERROR_DETAILS.UNSUPPORTED_MIME_TYPE
+    end
+
+    if packet_type == PACKET_TYPE.HANDSHAKE then
+        -- 对于握手包，需要解码 Base64 数据
+        local final_decoded = utils.base64_decode(decoded)
+        if not final_decoded then
+            return nil, ERROR_DETAILS.BASE64_DECODE_FAILED
+        end
+        return final_decoded
+    end
+
+    return decoded
+end
+
+-- 修改 decode 函数中的处理逻辑
 function rainbow.decode(packets, is_client, packet_type)
     -- 输入验证
     if type(packets) ~= "table" and type(packets) ~= "string" then
@@ -232,96 +273,65 @@ function rainbow.decode(packets, is_client, packet_type)
         packets = { packets }
     end
 
+    -- 添加对 is_client 的处理逻辑
+    local function validate_http_packet(packet)
+        if is_client then
+            -- 客户端模式：验证 HTTP 响应格式
+            return packet:match("^HTTP/[0-9.]+ %d+ .+\r\n")
+        else
+            -- 服务器模式：验证 HTTP 请求格式
+            return packet:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n")
+        end
+    end
+
     -- 验证每个数据包
     local decode_errors = {}
+    local all_decoded = {}
     for i, packet in ipairs(packets) do
         if type(packet) ~= "string" then
             table.insert(decode_errors, {
                 packet = i,
                 reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
             })
-            goto continue
+            goto next_packet
         end
 
-        -- 检查是否是有效的 HTTP 包
-        local is_valid_http = packet:match("^[A-Z]+ .+ HTTP/[0-9.]+\r\n") or
-            packet:match("^HTTP/[0-9.]+ %d+ .+\r\n")
-
-        if not is_valid_http then
+        if not validate_http_packet(packet) then
             table.insert(decode_errors, {
                 packet = i,
                 reason = ERROR_DETAILS.INVALID_PACKET_FORMAT
             })
-            goto continue
+            goto next_packet
         end
 
-        -- 提取 MIME 类型和内容
-        local mime_type = packet:match("[Cc]ontent%-[Tt]ype:%s*([^%s;,\r\n]+)")
-        local content = packet:match("\r\n\r\n(.+)$")
-        local encoder = packet:match("[Xx]%-[Ee]ncoder:%s*([^%s;,\r\n]+)")
-
-        if not mime_type then
-            table.insert(decode_errors, {
-                packet = i,
-                reason = ERROR_DETAILS.MIME_TYPE_MISSING
-            })
-            goto continue
-        end
-
-        if not content then
-            table.insert(decode_errors, {
-                packet = i,
-                reason = ERROR_DETAILS.CONTENT_MISSING
-            })
-            goto continue
-        end
-
-        -- 记录调试信息
-        logger.debug("Processing packet %d:", i)
-        logger.debug("  MIME type: %s", mime_type)
-        logger.debug("  Content length: %d", #content)
-        if encoder then
-            logger.debug("  Encoder: %s", encoder)
-        end
-
-        -- 解码内容
-        local decoded = stego.decode_mime(content, mime_type, encoder)
+        local decoded, err = decode_single_packet(packet, packet_type, i)
         if decoded then
-            if packet_type == PACKET_TYPE.HANDSHAKE then
-                -- 对于握手包，需要解码 Base64 数据
-                local final_decoded = utils.base64_decode(decoded)
-                if final_decoded then
-                    return final_decoded
-                else
-                    table.insert(decode_errors, {
-                        packet = i,
-                        reason = ERROR_DETAILS.BASE64_DECODE_FAILED
-                    })
-                end
-            else
-                return decoded
-            end
+            table.insert(all_decoded, decoded)
         else
             table.insert(decode_errors, {
                 packet = i,
-                reason = ERROR_DETAILS.UNSUPPORTED_MIME_TYPE
+                reason = err
             })
         end
 
-        ::continue::
+        ::next_packet::
     end
 
-    -- 如果所有包都解码失败，返回详细的错误信息
-    local error_msg = "Failed to decode packets:\n"
-    for _, err in ipairs(decode_errors) do
-        error_msg = error_msg .. string.format("  Packet %d: %s\n",
-            err.packet, err.reason)
+    -- 如果没有成功解码任何包
+    if #all_decoded == 0 then
+        local error_msg = "Failed to decode packets:\n"
+        for _, err in ipairs(decode_errors) do
+            error_msg = error_msg .. string.format("  Packet %d: %s\n",
+                err.packet, err.reason)
+        end
+        return error_handler.create_error(
+            error_handler.ERROR_TYPE.DECODE_FAILED,
+            error_msg
+        )
     end
 
-    return error_handler.create_error(
-        error_handler.ERROR_TYPE.DECODE_FAILED,
-        error_msg
-    )
+    -- 返回所有解码后的数据
+    return table.concat(all_decoded)
 end
 
 -- 验证数据包长度
