@@ -19,12 +19,10 @@ use tracing::{debug, info};
 use crate::{
     stego::{self, get_random_mime_type},
     utils::{generate_realistic_headers, validate_http_packet, HTTP_CONSTANTS},
-    DecodeResult, EncodeResult, Name, NetworkSteganographyProcessor, RainbowError, Result,
+    DecodeResult, EncodeResult, NetworkSteganographyProcessor, RainbowError, Result,
 };
 
 const CHUNK_SIZE: usize = 1024;
-
-// 将常量组织到一个结构中
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PacketInfo {
@@ -58,14 +56,13 @@ impl PacketInfo {
     }
 }
 
+/// An implementation of [`NetworkSteganographyProcessor`]
 #[derive(Debug, Clone)]
-pub struct Rainbow {
-    name: &'static str,
-}
+pub struct Rainbow;
 
 impl Rainbow {
     pub fn new() -> Self {
-        Self { name: "rainbow" }
+        Self
     }
 
     fn parse_cookies(headers: &HeaderMap) -> Vec<String> {
@@ -321,12 +318,6 @@ impl Rainbow {
         Err(RainbowError::InvalidData(
             "Content length mismatch".to_string(),
         ))
-    }
-}
-
-impl Name for Rainbow {
-    fn name(&self) -> &'static str {
-        self.name
     }
 }
 

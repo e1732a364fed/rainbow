@@ -1,12 +1,12 @@
 /*!
  * Rainbow Steganography Library
  *
- * This library provides functionality for steganography operations using rainbow tables.
+ * This library provides functionality for steganography operations.
  * It implements various steganographic techniques for hiding and extracting data within
  * different types of carrier files.
  *
  * Main components:
- * - rainbow: Implementation of rainbow table generation and lookup
+ * - rainbow: Implementation of [`NetworkSteganographyProcessor`]
  * - stego: Core steganography algorithms and traits
  * - utils: Common utility functions and helpers
  */
@@ -51,10 +51,6 @@ pub enum RainbowError {
 
 pub type Result<T> = std::result::Result<T, RainbowError>;
 
-pub trait Name {
-    fn name(&self) -> &'static str;
-}
-
 pub struct DecodeResult {
     pub data: Vec<u8>,
     pub expected_return_length: usize,
@@ -67,7 +63,7 @@ pub struct EncodeResult {
 }
 
 #[async_trait]
-pub trait NetworkSteganographyProcessor: Send + Sync + Name + DynClone {
+pub trait NetworkSteganographyProcessor: Send + Sync + DynClone {
     async fn encode_write(
         &self,
         plain_data: &[u8],
