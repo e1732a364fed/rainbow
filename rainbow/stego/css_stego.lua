@@ -1,8 +1,4 @@
-local css_stego = {}
-
--- CSS 动画时间线隐写编码器
 local css_encoder = {}
-
 local logger = require("rainbow.logger")
 
 function css_encoder.encode(data)
@@ -130,7 +126,4 @@ function css_encoder.decode(html_content)
     return decoded
 end
 
--- 导出 CSS 编码器
-css_stego.css_encoder = css_encoder
-
-return css_stego
+return css_encoder

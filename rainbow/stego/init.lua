@@ -12,15 +12,15 @@ local mime_types = {
 }
 
 -- 检查是否为有效的 MIME 类型
-local function is_valid_mime_type(mime_type)
-    return mime_types.basic[mime_type]
+function stego.is_valid_mime_type(mime_type)
+    return mime_types.basic[mime_type] == true
 end
 
 -- 导入所有编码器
-stego.css = require("rainbow.stego.css_stego").css_encoder
+stego.css = require("rainbow.stego.css_stego")
 stego.prism = require("rainbow.stego.prism_stego")
-stego.font = require("rainbow.stego.font_stego").font_encoder
-stego.svg = require("rainbow.stego.svg_path_stego").svg_encoder
+stego.font = require("rainbow.stego.font_stego")
+stego.svg = require("rainbow.stego.svg_path_stego")
 stego.html = require("rainbow.stego.html_stego")
 stego.json = require("rainbow.stego.json_stego")
 stego.xml = require("rainbow.stego.xml_stego")
@@ -56,36 +56,9 @@ local function get_random_encoder(mime_type)
     return encoders[math.random(#encoders)]
 end
 
--- Base64 编码函数
-function stego.base64_encode(data)
-    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    return ((data:gsub('.', function(x)
-        local r, b = '', x:byte()
-        for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and '1' or '0') end
-        return r;
-    end) .. '0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
-        if (#x < 6) then return '' end
-        local c = 0
-        for i = 1, 6 do c = c + (x:sub(i, i) == '1' and 2 ^ (6 - i) or 0) end
-        return b:sub(c + 1, c + 1)
-    end) .. ({ '', '==', '=' })[#data % 3 + 1])
-end
-
--- Base64 解码函数
-function stego.base64_decode(data)
-    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    data = string.gsub(data, '[^' .. b .. '=]', '')
-    return (data:gsub('.', function(x)
-        if (x == '=') then return '' end
-        local r, f = '', (b:find(x) - 1)
-        for i = 6, 1, -1 do r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and '1' or '0') end
-        return r;
-    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-        if (#x ~= 8) then return '' end
-        local c = 0
-        for i = 1, 8 do c = c + (x:sub(i, i) == '1' and 2 ^ (8 - i) or 0) end
-        return string.char(c)
-    end))
+-- 获取指定 MIME 类型的编码器列表（用于测试）
+function stego.get_mime_encoders(mime_type)
+    return mime_encoders[mime_type]
 end
 
 -- 获取随机 MIME 类型
@@ -104,8 +77,9 @@ function stego.encode_mime(data, mime_type)
     if encoder then
         local result = encoder.encode(data)
         if result then
-            logger.debug("Successfully encoded %d bytes", #result)
-            return result
+            logger.debug("Successfully encoded %d bytes using %s", #result, encoder.name or "unknown encoder")
+            -- 记住使用的编码器
+            return result, encoder
         end
         logger.warn("Failed to encode data with %s", mime_type)
     else
@@ -115,16 +89,28 @@ function stego.encode_mime(data, mime_type)
 end
 
 -- 从指定 MIME 类型解码数据
-function stego.decode_mime(content, mime_type)
+function stego.decode_mime(content, mime_type, preferred_encoder)
     logger.debug("Decoding data with MIME type: %s", mime_type)
     -- 尝试该 MIME 类型下的所有解码器
     local encoders = mime_encoders[mime_type]
     if encoders then
-        for _, encoder in ipairs(encoders) do
-            local result = encoder.decode(content)
+        -- 如果有首选编码器，先尝试它
+        if preferred_encoder then
+            local result = preferred_encoder.decode(content)
             if result then
-                logger.debug("Successfully decoded %d bytes", #result)
+                logger.debug("Successfully decoded %d bytes using preferred encoder", #result)
                 return result
+            end
+        end
+
+        -- 如果首选编码器失败或不存在，尝试其他编码器
+        for _, encoder in ipairs(encoders) do
+            if encoder ~= preferred_encoder then
+                local result = encoder.decode(content)
+                if result then
+                    logger.debug("Successfully decoded %d bytes", #result)
+                    return result
+                end
             end
         end
         logger.warn("All decoders failed for MIME type: %s", mime_type)
