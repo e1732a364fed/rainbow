@@ -331,39 +331,47 @@ impl NetworkSteganographyProcessor for Rainbow {
     ) -> Result<EncodeResult> {
         debug!("Encoding {} bytes of data", data.len());
 
-        // 将数据分块
         let chunks: Vec<_> = data.chunks(CHUNK_SIZE).collect();
         let total_chunks = chunks.len();
 
         let mut packets = Vec::new();
         let mut expected_lengths = Vec::new();
 
-        // 为每个数据块生成 HTTP 包
         for (i, chunk) in chunks.iter().enumerate() {
             let packet_info = PacketInfo::new(i, total_chunks, chunk.len());
             let mime = mime_type.clone().unwrap_or_else(get_random_mime_type);
 
-            // 根据 is_client 决定生成请求还是响应
+            // 生成数据包
             let packet = if is_client {
                 self.build_http_request(chunk, &packet_info, &mime).await?
             } else {
-                // 对于响应，随机生成一个合理的状态码
-                let status_code = if rand::random::<f32>() < 0.9 {
-                    200 // 90% 的概率返回 200
-                } else {
-                    // 10% 的概率返回其他状态码
-                    let other_codes = [201, 202, 204, 206];
-                    other_codes[rand::thread_rng().gen_range(0..other_codes.len())]
-                };
-                self.build_http_response(chunk, &packet_info, &mime, status_code)
+                self.build_http_response(chunk, &packet_info, &mime, 200)
                     .await?
             };
+
+            // 生成预期的返回包长度
+            let expected_length = if is_client {
+                // 如果我们是客户端，对方是服务器，预期返回 HTTP 响应
+                // 通常响应大小在 200-8000 字节之间
+                rand::thread_rng().gen_range(200..8000)
+            } else {
+                // 如果我们是服务器，对方是客户端，预期返回 HTTP 请求
+                // 通常请求大小在 100-2000 字节之间
+                rand::thread_rng().gen_range(100..2000)
+            };
+
             let pl = packet.len();
 
             packets.push(packet);
-            expected_lengths.push(chunk.len());
+            expected_lengths.push(expected_length);
 
-            debug!("Generated packet {}/{}: {} bytes", i + 1, total_chunks, pl);
+            debug!(
+                "Generated packet {}/{}: {} bytes, expecting response of {} bytes",
+                i + 1,
+                total_chunks,
+                pl,
+                expected_length
+            );
         }
 
         info!(
@@ -458,14 +466,262 @@ impl NetworkSteganographyProcessor for Rainbow {
     }
 }
 
+/// 生成指定长度的 HTTP 请求或响应包
+///
+/// # Arguments
+/// * `target_length` - 目标数据包长度
+/// * `is_request` - 是否为请求包（true 为请求，false 为响应）
+///
+/// # Returns
+/// 返回指定长度的 HTTP 数据包
+pub async fn generate_stego_packet_with_length(
+    target_length: usize,
+    is_request: bool,
+) -> Result<Vec<u8>> {
+    // 提取基础头部生成到单独的函数
+    fn generate_base_headers(is_request: bool, is_small_packet: bool) -> (String, &'static str) {
+        let mut headers = String::new();
+        let path = if is_request {
+            let method = if is_small_packet { "GET" } else { "GET" };
+            let paths = HTTP_CONSTANTS.get_paths;
+            let path = if is_small_packet {
+                paths.iter().min_by_key(|p| p.len()).unwrap_or(&"/")
+            } else {
+                paths[rand::thread_rng().gen_range(0..paths.len())]
+            };
+            headers.push_str(&format!("{} {} HTTP/1.1\r\n", method, path));
+            path
+        } else {
+            let rb = Rainbow::new();
+            headers.push_str(&format!("HTTP/1.1 {} OK\r\n", rb.get_random_status_code()));
+            ""
+        };
+        (headers, path)
+    }
+
+    let packet_info = PacketInfo::new(0, 1, target_length);
+    let is_small_packet = target_length < 1000;
+
+    // 生成基础头部
+    let (mut headers, path) = generate_base_headers(is_request, is_small_packet);
+
+    // 选择合适的 MIME 类型
+    let mime_type = if is_small_packet {
+        "application/json".to_string()
+    } else {
+        get_random_mime_type()
+    };
+
+    // 添加基础头部
+    if is_small_packet {
+        headers.push_str("Host: localhost\r\n");
+        headers.push_str("Connection: close\r\n");
+    } else {
+        headers.push_str(&format!(
+            "Date: {}\r\n",
+            chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S GMT")
+        ));
+
+        // 添加真实头部
+        let realistic_headers = generate_realistic_headers(is_request);
+        for (name, value) in realistic_headers {
+            if let Some(header_name) = name {
+                if let Ok(value_str) = value.to_str() {
+                    headers.push_str(&format!("{}: {}\r\n", header_name, value_str));
+                }
+            }
+        }
+    }
+
+    // 添加 Cookie 头部
+    headers.push_str(&generate_cookie_header(&packet_info, is_request)?);
+    headers.push_str(&format!("Content-Type: {}\r\n", mime_type));
+
+    // 预留 Content-Length 占位符
+    headers.push_str("Content-Length: 0000000000\r\n\r\n");
+
+    // 优化二分查找逻辑
+    let (mut packet, padding_len) =
+        find_optimal_packet_size(headers, target_length, &mime_type).await?;
+
+    // 添加填充（如果需要）
+    if padding_len > 0 {
+        add_padding_to_packet(&mut packet, padding_len)?;
+    }
+
+    Ok(packet)
+}
+
+// 提取二分查找逻辑到单独的函数
+async fn find_optimal_packet_size(
+    base_headers: String,
+    target_length: usize,
+    mime_type: &str,
+) -> Result<(Vec<u8>, usize)> {
+    let base_header_length = base_headers.len();
+    let min_header_length = base_header_length - "0000000000\r\n\r\n".len() + "0\r\n\r\n".len();
+
+    if target_length < min_header_length {
+        return Err(RainbowError::InvalidData(format!(
+            "Target length {} is too small for headers (min {})",
+            target_length, min_header_length
+        )));
+    }
+
+    let mut left = 1;
+    let mut right = target_length - min_header_length;
+    let mut best_result = None;
+
+    while left <= right {
+        let mid = (left + right) / 2;
+        let random_data: Vec<u8> = (0..mid).map(|_| rand::random()).collect();
+
+        let encoded = stego::encode_mime(&random_data, mime_type).await?;
+        let total_len = calculate_total_length(&base_headers, &encoded)?;
+
+        match total_len.cmp(&target_length) {
+            std::cmp::Ordering::Equal => {
+                return Ok((build_final_packet(&base_headers, &encoded)?, 0));
+            }
+            std::cmp::Ordering::Less => {
+                best_result = Some((encoded, target_length - total_len));
+                left = mid + 1;
+            }
+            std::cmp::Ordering::Greater => {
+                right = mid - 1;
+            }
+        }
+    }
+
+    best_result.ok_or_else(|| {
+        RainbowError::InvalidData(format!(
+            "Could not generate packet of length {}",
+            target_length
+        ))
+    })
+}
+
+// 辅助函数
+fn calculate_total_length(headers: &str, encoded: &[u8]) -> Result<usize> {
+    let content_length_str = encoded.len().to_string();
+    let header_length =
+        headers.len() - "0000000000\r\n\r\n".len() + content_length_str.len() + "\r\n\r\n".len();
+    Ok(header_length + encoded.len())
+}
+
+fn build_final_packet(headers: &str, encoded: &[u8]) -> Result<Vec<u8>> {
+    let mut packet = headers
+        .replace("0000000000\r\n\r\n", &format!("{}\r\n\r\n", encoded.len()))
+        .into_bytes();
+    packet.extend_from_slice(encoded);
+    Ok(packet)
+}
+
+fn generate_cookie_header(packet_info: &PacketInfo, is_request: bool) -> Result<String> {
+    let cookie_name = HTTP_CONSTANTS.cookie_names
+        [rand::thread_rng().gen_range(0..HTTP_CONSTANTS.cookie_names.len())];
+    let cookie_value = packet_info.to_cookie()?;
+
+    let mut cookies = vec![
+        format!("{}={}", cookie_name, cookie_value),
+        format!("sid={}", uuid::Uuid::new_v4()),
+    ];
+
+    // 添加随机常见 cookie
+    if rand::random::<bool>() {
+        cookies.push(format!(
+            "_ga=GA1.2.{}.{}",
+            rand::thread_rng().gen::<u32>(),
+            rand::thread_rng().gen::<u32>()
+        ));
+    }
+
+    let cookie_str = cookies.join("; ");
+    Ok(if is_request {
+        format!("Cookie: {}\r\n", cookie_str)
+    } else {
+        format!("Set-Cookie: {}\r\n", cookie_str)
+    })
+}
+
+fn add_padding_to_packet(packet: &mut Vec<u8>, padding_len: usize) -> Result<()> {
+    const PADDING_HEADER: &str = "X-Padding: ";
+    let padding = "A".repeat(padding_len);
+
+    if let Some(pos) = String::from_utf8_lossy(packet).find("\r\n") {
+        let mut new_packet = packet[..pos].to_vec();
+        new_packet.extend_from_slice(b"\r\n");
+        new_packet.extend_from_slice(PADDING_HEADER.as_bytes());
+        new_packet.extend_from_slice(padding.as_bytes());
+        new_packet.extend_from_slice(b"\r\n");
+        new_packet.extend_from_slice(&packet[pos + 2..]);
+        *packet = new_packet;
+        Ok(())
+    } else {
+        Err(RainbowError::InvalidData(
+            "Invalid packet format".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::EncodeResult;
 
     use super::*;
 
+    fn init() {
+        let _ = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_max_level(tracing::Level::DEBUG)
+            .try_init();
+    }
+
+    #[tokio::test]
+    async fn test_generate_packet_with_small_length() {
+        init();
+
+        // 测试请求生成 - 使用更大的初始大小
+        let target_length = 500;
+        let request = generate_stego_packet_with_length(target_length, true)
+            .await
+            .unwrap();
+        assert_eq!(request.len(), target_length);
+
+        let request_str = String::from_utf8_lossy(&request);
+        assert!(request_str.starts_with("GET ") || request_str.starts_with("POST "));
+
+        debug!("500 ok");
+    }
+
+    #[tokio::test]
+    async fn test_generate_packet_with_length() {
+        init();
+
+        // 测试请求生成 - 使用更大的初始大小
+        let target_length = 2000;
+        let request = generate_stego_packet_with_length(target_length, true)
+            .await
+            .unwrap();
+        assert_eq!(request.len(), target_length);
+
+        let request_str = String::from_utf8_lossy(&request);
+        assert!(request_str.starts_with("GET ") || request_str.starts_with("POST "));
+
+        debug!("2000 ok");
+
+        // 测试响应生成 - 使用更大的大小
+        let target_length = 3000;
+        let response = generate_stego_packet_with_length(target_length, false)
+            .await
+            .unwrap();
+        assert_eq!(response.len(), target_length);
+        assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1"));
+    }
+
     #[tokio::test]
     async fn test_encode_write_basic() {
+        init();
         let rainbow = Rainbow::new();
         let test_data = b"Hello, World!";
         let EncodeResult {
@@ -475,11 +731,12 @@ mod tests {
 
         assert!(!packets.is_empty());
         assert_eq!(packets.len(), lengths.len());
-        assert_eq!(lengths[0], test_data.len());
+        assert!(lengths[0] >= 200 && lengths[0] <= 8000);
     }
 
     #[tokio::test]
     async fn test_encode_write_large_data() {
+        init();
         let rainbow = Rainbow::new();
         let test_data = vec![0u8; CHUNK_SIZE * 2 + 100]; // 创建超过两个块的数据
         let EncodeResult {
@@ -489,13 +746,35 @@ mod tests {
 
         assert_eq!(packets.len(), 3);
         assert_eq!(lengths.len(), 3);
-        assert_eq!(lengths[0], CHUNK_SIZE);
-        assert_eq!(lengths[1], CHUNK_SIZE);
-        assert_eq!(lengths[2], 100);
+        for length in lengths {
+            assert!(length >= 200 && length <= 8000);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_expected_lengths_ranges() {
+        init();
+        let rainbow = Rainbow::new();
+        let test_data = b"Test Data";
+
+        // 测试客户端发送（期待服务器响应）
+        let EncodeResult {
+            encoded_packets: _,
+            expected_return_packet_lengths: client_lengths,
+        } = rainbow.encode_write(test_data, true, None).await.unwrap();
+        assert!(client_lengths[0] >= 200 && client_lengths[0] <= 8000);
+
+        // 测试服务器发送（期待客户端请求）
+        let EncodeResult {
+            encoded_packets: _,
+            expected_return_packet_lengths: server_lengths,
+        } = rainbow.encode_write(test_data, false, None).await.unwrap();
+        assert!(server_lengths[0] >= 100 && server_lengths[0] <= 2000);
     }
 
     #[tokio::test]
     async fn test_request_response_format() {
+        init();
         let rainbow = Rainbow::new();
         let test_data = b"Test Data";
 
@@ -518,6 +797,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mime_type_handling() {
+        init();
         let rainbow = Rainbow::new();
         let test_data = b"Test Data";
         let mime_type = Some("text/plain".to_string());
@@ -538,6 +818,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_packet_info_cookie() {
+        init();
         let info = PacketInfo::new(0, 1, 10);
         let cookie = info.to_cookie().unwrap();
         let decoded = PacketInfo::from_cookie(&cookie).unwrap();
@@ -550,6 +831,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_full_encode_decode_cycle() {
+        init();
         let rainbow = Rainbow::new();
         let test_data = b"Hello, World!";
 
@@ -583,6 +865,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_packet_validation() {
+        init();
         let rainbow = Rainbow::new();
         let invalid_packet = b"Invalid HTTP packet".to_vec();
 
@@ -592,6 +875,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cookie_parsing() {
+        init();
         let mut headers = HeaderMap::new();
         headers.insert(
             COOKIE,

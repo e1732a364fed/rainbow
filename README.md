@@ -69,7 +69,7 @@ prompt 由
 You are a cybersecurity expert and network protocol designer specializing in network steganography. 
 Your goal is to design a covert HTTP steganography protocol that is undetectable by modern DPI systems while maintaining efficient data transmission.
 ```
-和 ruci 的 `rucimp/src/map/steganography/ai_generated/ai_generate_protocol_prompt.md` 文件的内容组成
+和 ruci 的 `[prompt](https://github.com/e1732a364fed/ruci/tree/tokio/rucimp/src/map/steganography/ai_generated/ai_generate_protocol_prompt.md)` 文件的内容组成
 
 因为本项目包含人工智能生成的内容，故选择使用了 cc0 开源许可
 
