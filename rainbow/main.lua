@@ -1,6 +1,5 @@
 local stego = require("rainbow.stego")
 local sequence = require("rainbow.sequence")
-local handshake = require("rainbow.handshake")
 local utils = require("rainbow.utils")
 local logger = require("rainbow.logger")
 local error_handler = require("rainbow.error")

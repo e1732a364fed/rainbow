@@ -4,7 +4,6 @@ local lu = require("luaunit")
 -- 加载所有测试文件
 TestError = require("tests.test_error")
 TestLogger = require("tests.test_logger")
-TestHandshake = require("tests.test_handshake")
 TestMain = require("tests.test_main")
 TestCompress = require("tests.test_compress")
 TestUtils = require("tests.test_utils")
