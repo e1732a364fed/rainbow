@@ -1,3 +1,23 @@
+/*!
+JSON Steganography Module
+
+This module implements steganography by embedding data within JSON metadata fields.
+The method works by:
+- Converting input data to base64 encoding
+- Embedding the encoded data into JSON metadata fields like timestamps, IDs, etc.
+- Preserving valid JSON structure while hiding data
+
+Key features:
+- Maintains valid JSON format for stealth
+- Uses common metadata fields to avoid suspicion
+- Leverages base64 encoding for data compatibility
+
+Use cases:
+- Hiding data in JSON-based APIs and data exchanges
+- Covert communication through JSON metadata
+- Data embedding in JSON configuration files
+*/
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -5,7 +25,7 @@ use tracing::{debug, info, warn};
 
 use crate::Result;
 
-/// 将数据编码到 JSON 元数据中
+/// Encode data into JSON metadata
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Encoding data using JSON metadata steganography");
 
@@ -13,10 +33,10 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(b"{}".to_vec());
     }
 
-    // 将数据编码为 Base64
+    // Encode data as Base64
     let encoded = BASE64.encode(data);
 
-    // 构建 JSON 文档
+    // Build JSON document
     let json_obj = json!({
         "type": "metadata",
         "version": "1.0",
@@ -32,7 +52,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&json_obj)?)
 }
 
-/// 从 JSON 元数据中解码数据
+/// Decode data from JSON metadata
 pub fn decode(json_content: &[u8]) -> Result<Vec<u8>> {
     debug!("Decoding JSON metadata steganography");
 
@@ -41,20 +61,20 @@ pub fn decode(json_content: &[u8]) -> Result<Vec<u8>> {
         return Ok(Vec::new());
     }
 
-    // 记录原始内容以便调试
+    // Log raw content for debugging
     debug!(
         "Raw JSON content: {}",
         String::from_utf8_lossy(json_content)
     );
 
-    // 解析 JSON
+    // Parse JSON
     let json_obj: Value = serde_json::from_slice(json_content)?;
 
-    // 提取 metadata 字段中的数据
+    // Extract data from metadata field
     if let Some(encoded_data) = json_obj.get("metadata").and_then(|v| v.as_str()) {
         debug!("Found encoded data: {}", encoded_data);
 
-        // 尝试解码 Base64 数据
+        // Try to decode Base64 data
         if let Ok(decoded) = BASE64.decode(encoded_data) {
             info!(
                 "Successfully decoded {} bytes from JSON metadata",

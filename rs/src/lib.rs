@@ -1,3 +1,16 @@
+/*!
+ * Rainbow Steganography Library
+ *
+ * This library provides functionality for steganography operations using rainbow tables.
+ * It implements various steganographic techniques for hiding and extracting data within
+ * different types of carrier files.
+ *
+ * Main components:
+ * - rainbow: Implementation of rainbow table generation and lookup
+ * - stego: Core steganography algorithms and traits
+ * - utils: Common utility functions and helpers
+ */
+
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use thiserror::Error;
@@ -42,24 +55,34 @@ pub trait Name {
     fn name(&self) -> &'static str;
 }
 
+pub struct DecodeResult {
+    pub data: Vec<u8>,
+    pub expected_return_length: usize,
+    pub is_read_end: bool,
+}
+
+pub struct EncodeResult {
+    pub encoded_packets: Vec<Vec<u8>>,
+    pub expected_return_packet_lengths: Vec<usize>,
+}
+
 #[async_trait]
-pub trait SteganographyProcessor: Send + Sync + Name + DynClone {
+pub trait NetworkSteganographyProcessor: Send + Sync + Name + DynClone {
     async fn encode_write(
         &self,
-        data: &[u8],
+        plain_data: &[u8],
         is_client: bool,
         mime_type: Option<String>,
-    ) -> Result<(Vec<Vec<u8>>, Vec<usize>)>;
+    ) -> Result<EncodeResult>;
 
-    //return decoded, expected_return_length, is_read_end
     async fn decrypt_single_read(
         &self,
-        data: Vec<u8>,
+        cipher_data: Vec<u8>,
         packet_index: usize,
         is_client: bool,
-    ) -> Result<(Vec<u8>, usize, bool)>;
+    ) -> Result<DecodeResult>;
 }
-dyn_clone::clone_trait_object!(SteganographyProcessor);
+dyn_clone::clone_trait_object!(NetworkSteganographyProcessor);
 
 impl From<std::string::FromUtf8Error> for RainbowError {
     fn from(err: std::string::FromUtf8Error) -> Self {

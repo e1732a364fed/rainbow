@@ -1,7 +1,28 @@
+/*!
+SVG Path Steganography Implementation
+
+This module implements steganography using SVG path animations. The technique works by:
+- Encoding data bytes into SVG path coordinates and control points
+- Each byte is split into x,y coordinates (using modulo and division)
+- Creates quadratic Bezier curves that visually mask the embedded data
+- The data is hidden in the precise coordinate values while maintaining valid SVG paths
+
+Key features:
+- Maintains visual plausibility through smooth curve paths
+- Leverages SVG animation capabilities for data hiding
+- Good capacity while preserving visual quality
+- Resistant to casual visual inspection
+
+Usage scenarios:
+- Hiding data in vector graphics/animations
+- Web-based steganography applications
+- Cases requiring visual steganography with SVG support
+*/
+
 use crate::Result;
 use tracing::{debug, info, warn};
 
-/// 将字节转换为 SVG 路径动画
+/// Convert bytes to SVG path animation
 fn byte_to_path(byte: u8, index: usize) -> String {
     let x = (byte % 16) * 10;
     let y = (byte / 16) * 10;
@@ -39,7 +60,7 @@ fn byte_to_path(byte: u8, index: usize) -> String {
     )
 }
 
-/// 生成完整的 SVG 文档
+/// Generate complete SVG document
 fn generate_svg_document(paths: &[String]) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -66,7 +87,7 @@ fn generate_svg_document(paths: &[String]) -> String {
     )
 }
 
-/// 将数据编码为 SVG 路径动画
+/// Encode data as SVG path animation
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Encoding data using SVG path animation steganography");
 
@@ -84,7 +105,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(generate_svg_document(&paths).into_bytes())
 }
 
-/// 从 SVG 路径动画中解码数据
+/// Decode data from SVG path animation
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Decoding SVG path animation steganography");
 
@@ -95,12 +116,12 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let content = String::from_utf8_lossy(data);
     let mut result = Vec::new();
 
-    // 使用正则表达式提取路径数据
+    // Use regex to extract path data
     let re = regex::Regex::new(r#"<path[^>]+d="M\s*(\d+),(\d+)"#).unwrap();
     for cap in re.captures_iter(&content) {
         if let (Some(x), Some(y)) = (cap.get(1), cap.get(2)) {
             if let (Ok(x), Ok(y)) = (x.as_str().parse::<u32>(), y.as_str().parse::<u32>()) {
-                // 从坐标还原字节值
+                // Restore byte values from coordinates
                 let byte = ((y / 10) * 16 + x / 10) as u8;
                 result.push(byte);
                 debug!("Decoded coordinates ({},{}) to byte: {}", x, y, byte);

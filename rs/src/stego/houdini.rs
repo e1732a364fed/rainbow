@@ -1,3 +1,17 @@
+/*!
+ * Houdini Steganography Implementation
+ *
+ * This module implements steganography using HTML/CSS painting parameters to hide data.
+ * The method works by encoding secret messages into CSS styling properties like colors,
+ * offsets and sizes that appear legitimate but contain hidden information.
+ *
+ * Key features:
+ * - Hides data in CSS paint parameters that look like normal styling
+ * - Uses color values, offsets and sizes as carriers for hidden bits
+ * - Maintains visual appearance while storing secret data
+ * - Suitable for web-based steganography scenarios
+ */
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -10,22 +24,22 @@ struct PaintParam {
     size: f64,
 }
 
-/// 将数据编码为 CSS Paint Worklet 参数
+/// Encode data as CSS Paint Worklet parameters
 fn encode_to_paint_params(data: &[u8]) -> Vec<PaintParam> {
     let mut params = Vec::new();
 
     for (i, &byte) in data.iter().enumerate() {
-        // 修正：直接使用位移运算获取颜色分量
-        let r = (byte & 0xE0) >> 5; // 不变，取高3位
-        let g = (byte & 0x1C) >> 2; // 不变，取中3位
-        let b = byte & 0x03; // 不变，取低2位
+        // Fix: Use bit shifting operations to get color components
+        let r = (byte & 0xE0) >> 5; // Unchanged, take high 3 bits
+        let g = (byte & 0x1C) >> 2; // Unchanged, take middle 3 bits
+        let b = byte & 0x03; // Unchanged, take low 2 bits
 
         params.push(PaintParam {
             color: format!(
                 "rgb({},{},{})",
-                r * 32, // 正确：0-7 映射到 0-224
-                g * 32, // 正确：0-7 映射到 0-224
-                b * 64  // 正确：0-3 映射到 0-192
+                r * 32, // Correct: 0-7 maps to 0-224
+                g * 32, // Correct: 0-7 maps to 0-224
+                b * 64  // Correct: 0-3 maps to 0-192
             ),
             offset: (i as f64) * 0.1,
             size: 1.0 + (i % 3) as f64 * 0.5,
@@ -35,7 +49,7 @@ fn encode_to_paint_params(data: &[u8]) -> Vec<PaintParam> {
     params
 }
 
-/// 从 CSS Paint Worklet 参数中解码数据
+/// Decode data from CSS Paint Worklet parameters
 fn decode_from_paint_params(params: &[PaintParam]) -> Vec<u8> {
     let mut bytes = Vec::new();
 
@@ -50,12 +64,12 @@ fn decode_from_paint_params(params: &[PaintParam]) -> Vec<u8> {
             .collect();
 
         if rgb_values.len() == 3 {
-            // 修正：先将 RGB 值映射回原始比例
-            let r = rgb_values[0] / 32; // 0-224 映射回 0-7
-            let g = rgb_values[1] / 32; // 0-224 映射回 0-7
-            let b = rgb_values[2] / 64; // 0-192 映射回 0-3
+            // Fix: Map RGB values back to original scale
+            let r = rgb_values[0] / 32; // 0-224 maps back to 0-7
+            let g = rgb_values[1] / 32; // 0-224 maps back to 0-7
+            let b = rgb_values[2] / 64; // 0-192 maps back to 0-3
 
-            // 修正：使用位运算重构字节
+            // Fix: Reconstruct byte using bit operations
             let byte = (r << 5) | (g << 2) | b;
             bytes.push(byte);
         }
@@ -64,7 +78,7 @@ fn decode_from_paint_params(params: &[PaintParam]) -> Vec<u8> {
     bytes
 }
 
-/// 生成 CSS Paint Worklet 代码
+/// Generate CSS Paint Worklet code
 fn generate_paint_worklet() -> String {
     r#"if (typeof registerPaint !== 'undefined') {
     class StegoPainter {
@@ -88,7 +102,7 @@ fn generate_paint_worklet() -> String {
     .to_string()
 }
 
-/// 生成使用 Paint Worklet 的 CSS 样式
+/// Generate CSS style using Paint Worklet
 fn generate_css_style(params: &[PaintParam]) -> Result<String> {
     let json_str = serde_json::to_string(params)?;
     Ok(format!(
@@ -105,7 +119,7 @@ fn generate_css_style(params: &[PaintParam]) -> Result<String> {
     ))
 }
 
-/// 将数据编码到 CSS Paint Worklet 中
+/// Encode data to CSS Paint Worklet
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let params = encode_to_paint_params(data);
     let worklet = generate_paint_worklet();
@@ -120,7 +134,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&output)?)
 }
 
-/// 从 CSS Paint Worklet 中解码数据
+/// Decode data from CSS Paint Worklet
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     if data.is_empty() {
         return Ok(Vec::new());

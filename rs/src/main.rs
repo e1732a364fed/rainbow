@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use rainbow::rainbow::Rainbow;
-use rainbow::SteganographyProcessor;
+use rainbow::{DecodeResult, EncodeResult, NetworkSteganographyProcessor};
 use tokio::fs;
 use tracing::info;
 
@@ -15,40 +15,40 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 编码数据到 HTTP 包中
+    /// Encode data into HTTP packets
     Encode {
-        /// 输入文件路径
+        /// Input file path
         #[arg(short, long)]
         input: PathBuf,
 
-        /// 输出目录路径
+        /// Output directory path
         #[arg(short, long)]
         output: PathBuf,
 
-        /// 是否作为客户端编码
+        /// Whether to encode as client
         #[arg(short, long)]
         client: bool,
 
-        /// MIME 类型
+        /// MIME type
         #[arg(short, long)]
         mime_type: Option<String>,
     },
 
-    /// 解码单个 HTTP 包
+    /// Decode a single HTTP packet
     Decode {
-        /// 输入文件路径
+        /// Input file path
         #[arg(short, long)]
         input: PathBuf,
 
-        /// 输出文件路径
+        /// Output file path
         #[arg(short, long)]
         output: PathBuf,
 
-        /// 包索引
+        /// Packet index
         #[arg(short, long, default_value = "0")]
         index: usize,
 
-        /// 是否作为客户端解码
+        /// Whether to decode as client
         #[arg(short, long)]
         client: bool,
     },
@@ -56,7 +56,7 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 初始化日志
+    // Initialize logging
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
@@ -69,20 +69,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             client,
             mime_type,
         } => {
-            // 读取输入文件
+            // Read input file
             let data = fs::read(&input).await?;
 
-            // 编码数据
-            let (packets, lengths) = rainbow.encode_write(&data, client, mime_type).await?;
+            // Encode data
+            let EncodeResult {
+                encoded_packets: packets,
+                expected_return_packet_lengths: lengths,
+            } = rainbow.encode_write(&data, client, mime_type).await?;
 
-            // 创建输出目录
+            // Create output directory
             fs::create_dir_all(&output).await?;
 
-            // 写入每个包到单独的文件
+            // Write each packet to a separate file
             for (i, (packet, length)) in packets.iter().zip(lengths.iter()).enumerate() {
                 let file_path = output.join(format!("packet_{}.http", i));
                 fs::write(&file_path, packet).await?;
-                info!("写入包 {} 到 {:?}, 长度: {}", i, file_path, length);
+                info!(
+                    "Writing packet {} to {:?}, length: {}",
+                    i, file_path, length
+                );
             }
         }
 
@@ -92,17 +98,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             index,
             client,
         } => {
-            // 读取输入文件
+            // Read input file
             let data = fs::read(&input).await?;
 
-            // 解码数据
-            let (decoded, expected_length, is_end) =
-                rainbow.decrypt_single_read(data, index, client).await?;
+            // Decode data
+            let DecodeResult {
+                data: decoded,
+                expected_return_length: expected_length,
+                is_read_end: is_end,
+            } = rainbow.decrypt_single_read(data, index, client).await?;
 
-            // 写入解码后的数据
+            // Write decoded data
             fs::write(&output, decoded).await?;
             info!(
-                "解码包 {} 到 {:?}, 预期长度: {}, 是否为最后一个包: {}",
+                "Decoded packet {} to {:?}, expected length: {}, is last packet: {}",
                 index, output, expected_length, is_end
             );
         }

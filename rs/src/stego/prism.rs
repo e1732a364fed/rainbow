@@ -1,3 +1,25 @@
+/*!
+ * PRISM Steganography Implementation
+ *
+ * This module implements the PRISM (Pseudo-Random Injection Steganographic Method) technique
+ * which hides data within nested HTML div elements. The method works by:
+ *
+ * - Encoding the secret message into base64
+ * - Creating multiple layers of nested <div> elements (between 20-250 layers)
+ * - Injecting the encoded data into specific div attributes using pseudo-random distribution
+ *
+ * Key features:
+ * - HTML-based steganography making it suitable for web contexts
+ * - Variable number of layers provides additional security
+ * - Uses base64 encoding for data preparation
+ * - Pseudo-random distribution helps avoid detection
+ *
+ * Best used for:
+ * - Web-based covert communication
+ * - Hiding data in HTML documents
+ * - Scenarios where HTML manipulation won't raise suspicion
+ */
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::Rng;
 use tracing::{debug, info};
@@ -7,7 +29,7 @@ use crate::Result;
 const MIN_LAYERS: usize = 20;
 const MAX_LAYERS: usize = 250;
 
-/// 使用 HTML 嵌套 div 进行编码
+/// Encode using nested HTML divs
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let encoded = BASE64.encode(data);
     debug!("Encoding {} bytes using Prism steganography", data.len());
@@ -15,24 +37,24 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let mut rng = rand::thread_rng();
     let mut html = String::new();
 
-    // 添加 HTML 头部
+    // Add HTML header
     html.push_str("<!DOCTYPE html>\n<html>\n<head>\n<title>Page Title</title>\n</head>\n<body>\n");
     html.push_str("    <div class=\"container\">\n");
 
-    // 为每个字符创建一个嵌套的 div 结构
+    // Create a nested div structure for each character
     for c in encoded.chars() {
         let layers = rng.gen_range(MIN_LAYERS..=MAX_LAYERS);
         let mut div = String::new();
 
-        // 创建嵌套的 div 结构
+        // Create nested div structure
         for i in 1..=layers {
             div.push_str(&format!("<div class=\"l{}\">", i));
         }
 
-        // 添加字符
+        // Add character
         div.push(c);
 
-        // 关闭所有 div
+        // Close all divs
         for _ in 1..=layers {
             div.push_str("</div>");
         }
@@ -42,7 +64,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
         html.push('\n');
     }
 
-    // 添加 HTML 尾部
+    // Add HTML footer
     html.push_str("    </div>\n</body>\n</html>\n");
 
     info!(
@@ -52,18 +74,18 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(html.into_bytes())
 }
 
-/// 从 HTML 嵌套 div 中解码数据
+/// Decode data from nested HTML divs
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let html = String::from_utf8_lossy(data);
     debug!("Decoding Prism steganography from {} bytes", data.len());
 
     let mut encoded = String::new();
 
-    // 提取每个嵌套 div 结构中的字符
+    // Extract character from each nested div structure
     for line in html.lines() {
         let line = line.trim();
         if line.starts_with("<div class=\"l1\">") {
-            // 找到最内层的文本内容
+            // Find innermost text content
             let mut depth = 0;
             let mut in_tag = false;
             let mut found_char = None;
@@ -99,7 +121,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(Vec::new());
     }
 
-    // Base64 解码
+    // Base64 decode
     match BASE64.decode(&encoded) {
         Ok(decoded) => {
             info!(

@@ -1,3 +1,18 @@
+/*!
+ * RSS Feed Steganography Implementation
+ *
+ * This module implements steganography using RSS feed XML structure as the carrier.
+ * The secret data is encoded into RSS feed items by:
+ * - Converting secret data to base64
+ * - Embedding data into RSS item descriptions and titles
+ * - Preserving valid RSS feed structure
+ *
+ * Key features:
+ * - Uses standard RSS 2.0 format
+ * - Data is hidden in a way that produces valid RSS feeds
+ * - Suitable for scenarios requiring covert communication via RSS
+ */
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::prelude::*;
 
@@ -24,12 +39,12 @@ const RSS_TEMPLATE: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
 </channel>
 </rss>"#;
 
-/// 生成 RFC822 格式的日期字符串
+/// Generate RFC822 format date string
 fn get_rfc822_date() -> String {
     Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string()
 }
 
-/// 将数据编码到 RSS XML 中
+/// Encode data into RSS XML
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let encoded = BASE64.encode(data);
     let date = get_rfc822_date();
@@ -41,11 +56,11 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(rss.into_bytes())
 }
 
-/// 从 RSS XML 中解码数据
+/// Decode data from RSS XML
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let rss = String::from_utf8_lossy(data);
 
-    // 查找 guid 标签中的数据
+    // Find data in guid tag
     if let Some(start) = rss.find("<guid>") {
         if let Some(end) = rss[start..].find("</guid>") {
             let encoded = &rss[start + 6..start + end];
@@ -55,7 +70,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         }
     }
 
-    Ok(Vec::new()) // 如果解码失败，返回空向量
+    Ok(Vec::new()) // Return empty vector if decoding fails
 }
 
 #[cfg(test)]

@@ -1,3 +1,13 @@
+/*!
+ * Rainbow module implements core steganography and data hiding functionality.
+ *
+ * This module provides capabilities for:
+ * - Encoding and decoding hidden messages in network traffic
+ * - Managing HTTP request/response steganography
+ * - Generating randomized traffic patterns
+ * - Handling base64 and other encoding schemes
+ */
+
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
@@ -8,62 +18,13 @@ use tracing::{debug, info};
 
 use crate::{
     stego::{self, get_random_mime_type},
-    Name, RainbowError, Result, SteganographyProcessor,
+    utils::{generate_realistic_headers, validate_http_packet, HTTP_CONSTANTS},
+    DecodeResult, EncodeResult, Name, NetworkSteganographyProcessor, RainbowError, Result,
 };
 
 const CHUNK_SIZE: usize = 1024;
 
 // 将常量组织到一个结构中
-struct HttpConstants {
-    cookie_names: &'static [&'static str],
-    post_paths: &'static [&'static str],
-    get_paths: &'static [&'static str],
-    error_details: &'static [(&'static str, &'static str)], // (状态码, 出现概率)
-    status_codes: &'static [(u16, f32)],                    // (状态码, 出现概率)
-}
-
-const HTTP_CONSTANTS: HttpConstants = HttpConstants {
-    cookie_names: &[
-        "sessionId",
-        "visitor",
-        "track",
-        "_ga",
-        "_gid",
-        "JSESSIONID",
-        "cf_id",
-    ],
-    post_paths: &[
-        "/api/v1/data",
-        "/api/v1/upload",
-        "/api/v2/submit",
-        "/upload",
-        "/submit",
-        "/process",
-    ],
-    get_paths: &[
-        "/",
-        "/index.html",
-        "/assets/main.css",
-        "/js/app.js",
-        "/images/logo.png",
-        "/blog/latest",
-        "/docs/guide",
-    ],
-    error_details: &[
-        ("MIME_TYPE_MISSING", "Missing Content-Type header"),
-        ("CONTENT_MISSING", "Missing content body"),
-        ("BASE64_DECODE_FAILED", "Failed to decode Base64 data"),
-        ("INVALID_PACKET_FORMAT", "Invalid packet format"),
-        ("UNSUPPORTED_MIME_TYPE", "Unsupported MIME type"),
-    ],
-    status_codes: &[
-        (200, 0.9), // 90% 概率
-        (201, 0.025),
-        (202, 0.025),
-        (204, 0.025),
-        (206, 0.025),
-    ],
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PacketInfo {
@@ -119,7 +80,7 @@ impl Rainbow {
 
     // 提取公共的 HTTP 头部生成逻辑
     fn build_common_headers(&self, is_request: bool) -> String {
-        let realistic_headers = self.generate_realistic_headers(is_request);
+        let realistic_headers = generate_realistic_headers(is_request);
         let mut headers = String::new();
 
         // 添加基础头部
@@ -265,33 +226,6 @@ impl Rainbow {
         Ok(response)
     }
 
-    fn validate_http_packet(&self, packet: &[u8]) -> Result<()> {
-        if packet.len() < 16 {
-            return Err(RainbowError::InvalidData("Packet too short".to_string()));
-        }
-
-        let content = String::from_utf8_lossy(packet);
-        let first_line = content.lines().next().ok_or_else(|| {
-            RainbowError::InvalidData("Cannot get first line of packet".to_string())
-        })?;
-
-        // 更宽松的 HTTP 格式验证
-        if first_line.starts_with("HTTP/") && first_line.contains(" ") {
-            debug!("Valid HTTP response format");
-            return Ok(());
-        }
-
-        if first_line.split_whitespace().count() == 3
-            && first_line.contains("HTTP/")
-            && (first_line.starts_with("GET ") || first_line.starts_with("POST "))
-        {
-            debug!("Valid HTTP request format");
-            return Ok(());
-        }
-
-        Err(RainbowError::InvalidData("Invalid HTTP format".to_string()))
-    }
-
     async fn decode_single_packet(&self, packet: &[u8], packet_index: usize) -> Result<Vec<u8>> {
         let content = String::from_utf8_lossy(packet);
         let (header, body) = content.split_once("\r\n\r\n").ok_or_else(|| {
@@ -388,58 +322,6 @@ impl Rainbow {
             "Content length mismatch".to_string(),
         ))
     }
-
-    fn generate_realistic_headers(&self, is_request: bool) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-
-        if is_request {
-            headers.insert(
-                "User-Agent",
-                HeaderValue::from_static(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                ),
-            );
-            headers.insert(
-                "Accept-Language",
-                HeaderValue::from_static("en-US,en;q=0.9"),
-            );
-            headers.insert(
-                "Accept-Encoding",
-                HeaderValue::from_static("gzip, deflate, br"),
-            );
-
-            // 随机添加一些可选头部
-            if rand::random::<bool>() {
-                headers.insert("DNT", HeaderValue::from_static("1"));
-            }
-            if rand::random::<bool>() {
-                headers.insert("Cache-Control", HeaderValue::from_static("max-age=0"));
-            }
-        } else {
-            headers.insert("Server", HeaderValue::from_static("nginx/1.18.0"));
-            headers.insert("X-Frame-Options", HeaderValue::from_static("SAMEORIGIN"));
-            headers.insert(
-                "X-Content-Type-Options",
-                HeaderValue::from_static("nosniff"),
-            );
-
-            // 随机添加一些安全相关的头部
-            if rand::random::<bool>() {
-                headers.insert(
-                    "Strict-Transport-Security",
-                    HeaderValue::from_static("max-age=31536000; includeSubDomains"),
-                );
-            }
-            if rand::random::<bool>() {
-                headers.insert(
-                    "Content-Security-Policy",
-                    HeaderValue::from_static("default-src 'self'"),
-                );
-            }
-        }
-
-        headers
-    }
 }
 
 impl Name for Rainbow {
@@ -449,13 +331,13 @@ impl Name for Rainbow {
 }
 
 #[async_trait]
-impl SteganographyProcessor for Rainbow {
+impl NetworkSteganographyProcessor for Rainbow {
     async fn encode_write(
         &self,
         data: &[u8],
         is_client: bool,
         mime_type: Option<String>,
-    ) -> Result<(Vec<Vec<u8>>, Vec<usize>)> {
+    ) -> Result<EncodeResult> {
         debug!("Encoding {} bytes of data", data.len());
 
         // 将数据分块
@@ -499,7 +381,10 @@ impl SteganographyProcessor for Rainbow {
             data.len()
         );
 
-        Ok((packets, expected_lengths))
+        Ok(EncodeResult {
+            encoded_packets: packets,
+            expected_return_packet_lengths: expected_lengths,
+        })
     }
 
     async fn decrypt_single_read(
@@ -507,11 +392,11 @@ impl SteganographyProcessor for Rainbow {
         data: Vec<u8>,
         packet_index: usize,
         is_client: bool,
-    ) -> Result<(Vec<u8>, usize, bool)> {
+    ) -> Result<DecodeResult> {
         debug!("Decoding packet of {} bytes", data.len());
 
         // 验证数据包
-        self.validate_http_packet(&data)?;
+        validate_http_packet(&data)?;
 
         // 解码数据包
         let decoded = self.decode_single_packet(&data, packet_index).await?;
@@ -574,19 +459,28 @@ impl SteganographyProcessor for Rainbow {
         let is_read_end = packet_index + 1 >= total;
 
         info!("Successfully decoded {} bytes from packet", decoded.len());
-        Ok((decoded, expected_length, is_read_end))
+        Ok(DecodeResult {
+            data: decoded,
+            expected_return_length: expected_length,
+            is_read_end,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::EncodeResult;
+
     use super::*;
 
     #[tokio::test]
     async fn test_encode_write_basic() {
         let rainbow = Rainbow::new();
         let test_data = b"Hello, World!";
-        let (packets, lengths) = rainbow.encode_write(test_data, true, None).await.unwrap();
+        let EncodeResult {
+            encoded_packets: packets,
+            expected_return_packet_lengths: lengths,
+        } = rainbow.encode_write(test_data, true, None).await.unwrap();
 
         assert!(!packets.is_empty());
         assert_eq!(packets.len(), lengths.len());
@@ -597,7 +491,10 @@ mod tests {
     async fn test_encode_write_large_data() {
         let rainbow = Rainbow::new();
         let test_data = vec![0u8; CHUNK_SIZE * 2 + 100]; // 创建超过两个块的数据
-        let (packets, lengths) = rainbow.encode_write(&test_data, true, None).await.unwrap();
+        let EncodeResult {
+            encoded_packets: packets,
+            expected_return_packet_lengths: lengths,
+        } = rainbow.encode_write(&test_data, true, None).await.unwrap();
 
         assert_eq!(packets.len(), 3);
         assert_eq!(lengths.len(), 3);
@@ -612,12 +509,18 @@ mod tests {
         let test_data = b"Test Data";
 
         // 测试客户端请求
-        let (request_packets, _) = rainbow.encode_write(test_data, true, None).await.unwrap();
+        let EncodeResult {
+            encoded_packets: request_packets,
+            expected_return_packet_lengths: _,
+        } = rainbow.encode_write(test_data, true, None).await.unwrap();
         let request = String::from_utf8_lossy(&request_packets[0]);
         assert!(request.starts_with("GET ") || request.starts_with("POST "));
 
         // 测试服务器响应
-        let (response_packets, _) = rainbow.encode_write(test_data, false, None).await.unwrap();
+        let EncodeResult {
+            encoded_packets: response_packets,
+            expected_return_packet_lengths: _,
+        } = rainbow.encode_write(test_data, false, None).await.unwrap();
         let response = String::from_utf8_lossy(&response_packets[0]);
         assert!(response.starts_with("HTTP/1.1"));
     }
@@ -628,7 +531,10 @@ mod tests {
         let test_data = b"Test Data";
         let mime_type = Some("text/plain".to_string());
 
-        let (packets, _) = rainbow
+        let EncodeResult {
+            encoded_packets: packets,
+            expected_return_packet_lengths: _,
+        } = rainbow
             .encode_write(test_data, true, mime_type)
             .await
             .unwrap();
@@ -657,7 +563,10 @@ mod tests {
         let test_data = b"Hello, World!";
 
         // 编码：模拟客户端发送请求，使用 application/octet-stream 强制 POST 请求
-        let (packets, _) = rainbow
+        let EncodeResult {
+            encoded_packets: packets,
+            expected_return_packet_lengths: _lengths,
+        } = rainbow
             .encode_write(
                 test_data,
                 true,
@@ -667,7 +576,11 @@ mod tests {
             .unwrap();
 
         // 解码：模拟服务器接收请求
-        let (decoded, length, is_end) = rainbow
+        let DecodeResult {
+            data: decoded,
+            expected_return_length: length,
+            is_read_end: is_end,
+        } = rainbow
             .decrypt_single_read(packets[0].clone(), 0, true)
             .await
             .unwrap();

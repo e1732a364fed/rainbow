@@ -1,5 +1,5 @@
 use rainbow::rainbow::Rainbow;
-use rainbow::SteganographyProcessor;
+use rainbow::{DecodeResult, EncodeResult, NetworkSteganographyProcessor};
 use tokio::fs;
 
 async fn test_stego(
@@ -7,15 +7,18 @@ async fn test_stego(
     data: &[u8],
     mime_type: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("\n测试 {} 隐写:", mime_type);
-    println!("原始数据: {}", String::from_utf8_lossy(data));
+    println!("\nTesting {} steganography:", mime_type);
+    println!("Original data: {}", String::from_utf8_lossy(data));
 
     // 编码数据
-    let (packets, lengths) = rainbow
+    let EncodeResult {
+        encoded_packets: packets,
+        expected_return_packet_lengths: lengths,
+    } = rainbow
         .encode_write(data, true, Some(mime_type.to_string()))
         .await?;
 
-    println!("\n生成了 {} 个数据包", packets.len());
+    println!("\nGenerated {} packets", packets.len());
 
     println!("packets: {:?}", String::from_utf8_lossy(&packets[0]));
 
@@ -34,20 +37,23 @@ async fn test_stego(
             i
         );
         fs::write(&file_path, packet).await?;
-        println!("写入包 {} 到 {}, 长度: {}", i, file_path, length);
+        println!("Writing packet {} to {}, length: {}", i, file_path, length);
 
         // 解码数据包
-        let (decoded, expected_length, is_end) =
-            rainbow.decrypt_single_read(packet.clone(), i, true).await?;
+        let DecodeResult {
+            data: decoded,
+            expected_return_length: expected_length,
+            is_read_end: is_end,
+        } = rainbow.decrypt_single_read(packet.clone(), i, true).await?;
 
         println!(
-            "解码包 {}: 长度 = {}, 预期长度 = {}, 是否为最后一个包 = {}",
+            "Decoded packet {}: length = {}, expected length = {}, is last packet = {}",
             i,
             decoded.len(),
             expected_length,
             is_end
         );
-        println!("解码内容: {}\n", String::from_utf8_lossy(&decoded));
+        println!("Decoded content: {}\n", String::from_utf8_lossy(&decoded));
     }
 
     Ok(())

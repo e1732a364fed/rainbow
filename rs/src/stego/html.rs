@@ -1,3 +1,18 @@
+/*! HTML Steganography Implementation
+
+This module implements steganography using HTML document structure as the carrier.
+The method works by:
+- Embedding data within HTML template variations
+- Using different HTML templates as carriers
+- Encoding secret data using base64 before embedding
+- Maintaining valid HTML structure while hiding data
+
+Key features:
+- Preserves valid HTML syntax
+- Uses multiple template variations for better concealment
+- Suitable for scenarios requiring HTML-based data hiding
+*/
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::seq::SliceRandom;
 
@@ -38,9 +53,9 @@ const HTML_TEMPLATES: &[&str] = &[
 </html>"#,
 ];
 
-/// 将数据编码到 HTML 注释中
+/// Encode data into HTML comments
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
-    // 处理空数据的情况
+    // Handle empty data case
     if data.is_empty() {
         return Ok(b"<!DOCTYPE html><html><head></head><body></body></html>".to_vec());
     }
@@ -48,14 +63,14 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let template = HTML_TEMPLATES.choose(&mut rand::thread_rng()).unwrap();
     let encoded = BASE64.encode(data);
 
-    // 确保编码后的数据不包含 "--" 序列
+    // Ensure encoded data doesn't contain "--" sequence
     let safe_encoded = encoded.replace("--", "-&#45;");
     let html = template.replace("{data}", &safe_encoded);
 
     Ok(html.into_bytes())
 }
 
-/// 从 HTML 注释中解码数据
+/// Decode data from HTML comments
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let html = String::from_utf8_lossy(data);
 
@@ -63,12 +78,12 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(Vec::new());
     }
 
-    // 查找注释中的数据，使用更严格的模式匹配
+    // Find data in comments using stricter pattern matching
     if let Some(start) = html.find("<!-- ") {
         if let Some(end) = html[start..].find(" -->") {
             let encoded = &html[start + 5..start + end];
 
-            // 还原可能被转义的 "--" 序列
+            // Restore potentially escaped "--" sequences
             let restored = encoded.replace("-&#45;", "--");
 
             if let Ok(decoded) = BASE64.decode(restored) {
@@ -77,7 +92,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         }
     }
 
-    // 如果无法解码，返回空向量而不是原始数据
+    // Return empty vector instead of original data if decoding fails
     Ok(Vec::new())
 }
 

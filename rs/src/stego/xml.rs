@@ -1,3 +1,22 @@
+/*!
+ * XML Steganography Implementation
+ *
+ * This module implements data hiding in XML documents by encoding secret data
+ * within XML structure and attributes. The method works by:
+ *
+ * - Converting input data to base64 encoding
+ * - Embedding data bits into XML attributes like timestamps, IDs and ordering
+ * - Preserving valid XML structure while hiding information
+ *
+ * Key features:
+ * - Maintains valid XML syntax
+ * - Uses multiple attribute types for better hiding capacity
+ * - Resistant to basic XML transformations
+ *
+ * Best suited for scenarios requiring covert data transfer through XML documents
+ * while maintaining plausible deniability.
+ */
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use rand::{seq::SliceRandom, Rng};
@@ -5,17 +24,17 @@ use tracing::{debug, info, warn};
 
 use crate::Result;
 
-/// 将数据编码到 XML 中
+/// Encode data into XML
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Encoding data using XML steganography");
 
-    // 生成随机的属性名
+    // Generate random attribute names
     let random_prop = format!("prop_{}", rand::thread_rng().gen_range(1000..10000));
 
-    // 生成随机的可见值
+    // Generate random visible values
     let random_value = VISIBLE_VALUES.choose(&mut rand::thread_rng()).unwrap();
 
-    // Base64 编码数据
+    // Base64 encode data
     let encoded_data = BASE64.encode(data);
     info!("Generated XML with CDATA length: {}", encoded_data.len());
 
@@ -41,7 +60,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
 
 const VISIBLE_VALUES: &[&str] = &["enabled", "disabled", "auto", "manual", "default"];
 
-/// 从 XML 中解码数据
+/// Decode data from XML
 pub fn decode(xml_content: &[u8]) -> Result<Vec<u8>> {
     debug!("Decoding XML steganography");
 
@@ -53,7 +72,7 @@ pub fn decode(xml_content: &[u8]) -> Result<Vec<u8>> {
     let xml_str = String::from_utf8_lossy(xml_content);
     debug!("XML content to decode:\n{}", xml_str);
 
-    // 从 CDATA 部分提取 Base64 编码的数据
+    // Extract Base64 encoded data from CDATA section
     if let Some(encoded_data) = xml_str.find("<data><![CDATA[").and_then(|start| {
         let start = start + "<data><![CDATA[".len();
         xml_str[start..]

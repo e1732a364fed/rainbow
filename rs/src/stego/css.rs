@@ -1,8 +1,26 @@
+/*! CSS Animation Steganography Implementation
+
+This module implements steganography using CSS animations as the carrier. The method works by:
+- Encoding data into CSS animation properties like timing functions and keyframes
+- Using variations in animation parameters to embed binary data
+- Generating valid CSS that appears as normal animations
+
+Key features:
+- Maintains valid CSS syntax for browser compatibility
+- Provides reasonable deniability as animations are common in web pages
+- Allows embedding data while preserving visual appearance
+
+Use cases:
+- Covert data transmission via web pages
+- Information hiding in CSS-based web applications
+- Steganographic watermarking of web content
+*/
+
 use crate::Result;
 use rand::{thread_rng, Rng};
 use regex;
 
-/// 将数据编码到 CSS 动画中
+/// Encode data into CSS animation
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     if data.is_empty() {
         return Ok(r#"<!DOCTYPE html>
@@ -14,24 +32,24 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let mut animations = Vec::new();
     let mut elements = Vec::new();
 
-    // 将整个数据转换为位序列
+    // Convert entire data into bit sequence
     let bits: Vec<u8> = data
         .iter()
         .flat_map(|&byte| (0..8).map(move |i| (byte >> (7 - i)) & 1))
         .collect();
 
-    // 每8位作为一组处理
+    // Process every 8 bits as a group
     for chunk_bits in bits.chunks(8) {
         let anim_name = format!("a{}", thread_rng().gen_range(10000..100000));
         let elem_id = format!("e{}", thread_rng().gen_range(10000..100000));
 
-        // 生成延迟值
+        // Generate delay values
         let delays: Vec<&str> = chunk_bits
             .iter()
             .map(|&bit| if bit == 1 { "0.1s" } else { "0.2s" })
             .collect();
 
-        // 创建动画和元素样式
+        // Create animation and element styles
         animations.push(format!(
             r#"
 @keyframes {} {{
@@ -55,7 +73,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
         elements.push(format!(r#"<div id="{}"></div>"#, elem_id));
     }
 
-    // 生成完整的 HTML
+    // Generate complete HTML
     let html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -80,7 +98,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(html.into_bytes())
 }
 
-/// 从 CSS 动画中解码数据
+/// Decode data from CSS animation
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let html = String::from_utf8_lossy(data);
 
@@ -88,12 +106,12 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         return Ok(Vec::new());
     }
 
-    // 如果是空页面，直接返回空数据
+    // If empty page, return empty data directly
     if html.contains("Empty Page") {
         return Ok(Vec::new());
     }
 
-    // 提取所有动画延迟时间
+    // Extract all animation delay times
     let re = regex::Regex::new(r"animation-delay:\s*([^;]+)").unwrap();
     let mut all_bits = Vec::new();
 
@@ -101,13 +119,13 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
         let delays = cap.get(1).unwrap().as_str();
         let times: Vec<&str> = delays.split(',').map(|s| s.trim()).collect();
 
-        // 收集所有位
+        // Collect all bits
         for time in times {
             all_bits.push(if time.starts_with("0.1") { 1u8 } else { 0u8 });
         }
     }
 
-    // 将位转换回字节
+    // Convert bits back to bytes
     let mut bytes = Vec::new();
     for chunk in all_bits.chunks(8) {
         if chunk.len() == 8 {

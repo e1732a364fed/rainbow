@@ -1,3 +1,19 @@
+/*!
+ * Steganography module providing various data hiding implementations
+ *
+ * This module contains different steganographic techniques for hiding data in various
+ * file formats and data structures. Key features include:
+ *
+ * - Audio steganography for hiding data in audio files
+ * - CSS-based data hiding techniques
+ * - Font-based steganography
+ * - Grid-based data encoding
+ * - HTML and web-based hiding methods
+ * - JSON structure manipulation
+ * - RSS feed steganography
+ * - SVG path manipulation
+ */
+
 pub mod audio;
 pub mod css;
 pub mod font;
@@ -33,19 +49,19 @@ const MIME_TYPES: &[(&str, &[&str])] = &[
     ("image/svg+xml", &["svg_path"]),
 ];
 
-/// 获取随机的 MIME 类型
+/// Get random MIME type
 pub fn get_random_mime_type() -> String {
     let (mime_type, _) = MIME_TYPES[rand::thread_rng().gen_range(0..MIME_TYPES.len())];
     mime_type.to_string()
 }
 
-/// 根据 MIME 类型编码数据
+/// Encode data based on MIME type
 pub async fn encode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
     debug!("Encoding data with MIME type: {}", mime_type);
 
     match mime_type {
         "text/html" => {
-            // 随机选择 HTML、Prism 或 Font 编码器
+            // Randomly choose HTML, Prism, or Font encoder
             let choice = rand::thread_rng().gen_range(0..3);
             match choice {
                 0 => html::encode(data),
@@ -54,7 +70,7 @@ pub async fn encode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
             }
         }
         "text/css" => {
-            // 随机选择 CSS、Houdini 或 Grid 编码器
+            // Randomly choose CSS, Houdini, or Grid encoder
             let choice = rand::thread_rng().gen_range(0..3);
             match choice {
                 0 => css::encode(data),
@@ -64,7 +80,7 @@ pub async fn encode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
         }
         "application/json" => json::encode(data),
         "application/xml" => {
-            // 随机选择 XML 或 RSS 编码器
+            // Randomly choose XML or RSS encoder
             if rand::thread_rng().gen_bool(0.5) {
                 xml::encode(data)
             } else {
@@ -84,13 +100,13 @@ pub async fn encode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
     }
 }
 
-/// 根据 MIME 类型解码数据
+/// Decode data based on MIME type
 pub async fn decode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
     debug!("Decoding data with MIME type: {}", mime_type);
 
     match mime_type {
         "text/html" => {
-            // 尝试 HTML、Prism 和 Font 解码
+            // Try HTML, Prism, and Font decoding
             match html::decode(data) {
                 Ok(decoded) if !decoded.is_empty() => Ok(decoded),
                 _ => match prism::decode(data) {
@@ -100,7 +116,7 @@ pub async fn decode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
             }
         }
         "text/css" => {
-            // 尝试 CSS、Houdini 和 Grid 解码
+            // Try CSS, Houdini, and Grid decoding
             match css::decode(data) {
                 Ok(decoded) if !decoded.is_empty() => Ok(decoded),
                 _ => match houdini::decode(data) {
@@ -111,7 +127,7 @@ pub async fn decode_mime(data: &[u8], mime_type: &str) -> Result<Vec<u8>> {
         }
         "application/json" => json::decode(data),
         "application/xml" => {
-            // 尝试 XML 解码，如果失败则尝试 RSS 解码
+            // Try XML decoding, if fails try RSS decoding
             match xml::decode(data) {
                 Ok(decoded) if !decoded.is_empty() => Ok(decoded),
                 _ => rss::decode(data),
@@ -135,11 +151,11 @@ mod tests {
     use super::*;
 
     // async fn test_encoder<T: Encoder>(encoder: T, test_data: &[u8]) {
-    //     // 编码
+    //     // Encode
     //     let encoded = encoder.encode(test_data).await.unwrap();
     //     assert!(!encoded.is_empty());
 
-    //     // 解码
+    //     // Decode
     //     let decoded = encoder.decode(&encoded).await.unwrap();
     //     assert_eq!(decoded, test_data);
     // }
@@ -148,7 +164,7 @@ mod tests {
     async fn test_mime_type_encoding() {
         let test_data = b"Hello, MIME Type Steganography!";
 
-        // 测试所有 MIME 类型
+        // Test all MIME types
         for (mime_type, _) in MIME_TYPES {
             let encoded = encode_mime(test_data, mime_type).await.unwrap();
             let decoded = decode_mime(&encoded, mime_type).await.unwrap();

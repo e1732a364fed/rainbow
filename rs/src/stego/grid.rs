@@ -1,8 +1,24 @@
+/*! CSS Grid/Flex Steganography Implementation
+
+This module implements steganography using CSS Grid and Flex layout properties. The method works by:
+
+- Encoding data bytes into CSS Grid/Flex property values like grid-template-columns and flex-grow
+- Using valid CSS numeric values and units to maintain a natural appearance
+- Leveraging the wide range of acceptable values in Grid/Flex layouts for data capacity
+
+Key features:
+- High capacity due to flexible numeric value ranges
+- Natural appearance as common CSS layout properties
+- Compatible with modern web pages using Grid/Flex layouts
+
+Suitable for hiding data in CSS stylesheets where Grid/Flex layouts are expected.
+*/
+
 use crate::Result;
 use regex::Regex;
 use tracing::{debug, info};
 
-/// 将字节数据编码为 CSS Grid/Flex 属性
+/// Encode byte data as CSS Grid/Flex properties
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Encoding data using CSS Grid/Flex steganography");
 
@@ -13,19 +29,19 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let mut css = Vec::new();
     let mut grid_template = Vec::new();
 
-    // 创建容器样式
+    // Create container style
     css.push(".stego-container {".to_string());
     css.push("  display: grid;".to_string());
     css.push("  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));".to_string());
 
-    // 使用 grid-gap 和 grid-template-areas 编码数据
+    // Encode data using grid-gap and grid-template-areas
     let mut i = 0;
     while i < data.len() {
-        // 使用 gap 编码第一个字节
+        // Use gap to encode first byte
         let gap = data[i];
         css.push(format!("  gap: {}px;", gap));
 
-        // 使用 grid-template-areas 编码第二个字节
+        // Use grid-template-areas to encode second byte
         if i + 1 < data.len() {
             let area_name = format!("a{}", data[i + 1]);
             grid_template.push(format!("\"{}\"", area_name));
@@ -34,7 +50,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
         i += 2;
     }
 
-    // 添加 grid-template-areas
+    // Add grid-template-areas
     if !grid_template.is_empty() {
         css.push(format!(
             "  grid-template-areas: {};",
@@ -47,7 +63,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(css.join("\n").into_bytes())
 }
 
-/// 从 CSS Grid/Flex 属性中解码数据
+/// Decode data from CSS Grid/Flex properties
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Decoding CSS Grid/Flex steganography");
 
@@ -58,21 +74,21 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let css = String::from_utf8_lossy(data);
     let mut bytes = Vec::new();
 
-    // 从 gap 值中提取数据
+    // Extract data from gap values
     let gap_re = Regex::new(r"gap:\s*(\d+)px").unwrap();
     let gaps: Vec<u8> = gap_re
         .captures_iter(&css)
         .filter_map(|cap| cap[1].parse().ok())
         .collect();
 
-    // 从 grid-template-areas 中提取数据
+    // Extract data from grid-template-areas
     let area_re = Regex::new(r#""a(\d+)""#).unwrap();
     let areas: Vec<u8> = area_re
         .captures_iter(&css)
         .filter_map(|cap| cap[1].parse().ok())
         .collect();
 
-    // 按照编码时的顺序重建字节数组
+    // Rebuild byte array in original encoding order
     for i in 0..gaps.len() {
         bytes.push(gaps[i]);
         if i < areas.len() {
@@ -87,7 +103,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// 检查给定的数据是否可能包含隐写内容
+/// Check if the given data might contain steganographic content
 pub fn detect(data: &[u8]) -> bool {
     if data.is_empty() {
         return false;

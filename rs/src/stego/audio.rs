@@ -1,3 +1,22 @@
+/*! Audio Steganography Implementation
+
+This module implements audio steganography using frequency-based data embedding. The technique works by:
+
+1. Modifying carrier frequencies in the audio signal to encode hidden data
+2. Using specific sample rates and carrier frequencies to maintain audio quality
+3. Embedding data by subtly altering wave amplitudes within human hearing thresholds
+
+Key features:
+- Maintains audio quality while hiding data
+- Resistant to basic audio processing/compression
+- Configurable sample rate and carrier frequency for different scenarios
+
+Best used for:
+- Hiding small amounts of data in audio files
+- Applications requiring subtle data embedding
+- Scenarios where audio quality preservation is critical
+*/
+
 use crate::stego::Encoder;
 use crate::Result;
 use async_trait::async_trait;
@@ -54,21 +73,21 @@ impl AudioEncoder {
         let mut phase = 0.0;
         let time_step = 1.0 / self.sample_rate as f64;
 
-        // 添加同步序列
+        // Add synchronization sequence
         samples.extend(self.generate_sync_sequence());
 
-        // 编码数据
+        // Encode data
         for &byte in data {
             let amplitude = self.byte_to_amplitude(byte);
 
-            // 生成一帧数据
+            // Generate one frame of data
             for _ in 0..self.frame_size {
                 let sample = amplitude * (2.0 * PI * self.carrier_freq as f64 * phase).sin();
                 samples.push(sample);
                 phase += time_step;
             }
 
-            // 在字节之间添加短暂的静音
+            // Add brief silence between bytes
             samples.extend(std::iter::repeat(0.0).take(4));
         }
 
@@ -84,7 +103,7 @@ impl AudioEncoder {
         let mut pos = 0;
         let sync_sequence = self.generate_sync_sequence();
 
-        // 寻找同步序列
+        // Find synchronization sequence
         let mut sync_detected = false;
         'outer: while pos <= samples.len().saturating_sub(self.sync_size) {
             let mut match_found = true;
@@ -109,8 +128,8 @@ impl AudioEncoder {
             return None;
         }
 
-        // 解码数据
-        let frame_size = self.frame_size + 4; // 包括静音间隔
+        // Decode data
+        let frame_size = self.frame_size + 4; // Including silence interval
         while pos + self.frame_size <= samples.len() {
             let frame: Vec<f64> = samples[pos..pos + self.frame_size].to_vec();
             let amplitude = Self::calculate_peak_amplitude(&frame);
@@ -149,17 +168,17 @@ impl Encoder for AudioEncoder {
             data
         };
 
-        // 生成音频波形
+        // Generate audio waveform
         let audio_data = self.generate_audio_data(data);
 
-        // 将音频数据转换为字符串
+        // Convert audio data to string
         let audio_str = audio_data
             .iter()
             .map(|x| x.to_string())
             .collect::<Vec<_>>()
             .join(",");
 
-        // Base64 编码
+        // Base64 encoding
         let encoded = general_purpose::STANDARD.encode(audio_str);
 
         Ok(format!(
@@ -188,7 +207,7 @@ impl Encoder for AudioEncoder {
             return Ok(Vec::new());
         }
 
-        // 提取 Base64 编码的音频数据
+        // Extract Base64 encoded audio data
         let base64_data = match content
             .split("base64,")
             .nth(1)
@@ -201,7 +220,7 @@ impl Encoder for AudioEncoder {
             }
         };
 
-        // 解码 Base64 数据
+        // Decode Base64 data
         let decoded = match general_purpose::STANDARD.decode(base64_data) {
             Ok(data) => data,
             Err(e) => {
@@ -218,7 +237,7 @@ impl Encoder for AudioEncoder {
             }
         };
 
-        // 将解码后的数据转换为样本数组
+        // Convert decoded data to sample array
         let samples: Vec<f64> = decoded_str
             .split(',')
             .filter_map(|s| s.parse().ok())
@@ -229,7 +248,7 @@ impl Encoder for AudioEncoder {
             return Ok(Vec::new());
         }
 
-        // 从音频波形中提取数据
+        // Extract data from audio waveform
         match self.extract_data(&samples) {
             Some(data) => {
                 debug!("Successfully decoded {} bytes from audio", data.len());
@@ -252,11 +271,11 @@ mod tests {
         let encoder = AudioEncoder::default();
         let test_data = b"Hello, Audio Steganography!";
 
-        // 编码
+        // Encode
         let encoded = encoder.encode(test_data).await.unwrap();
         assert!(!encoded.is_empty());
 
-        // 解码
+        // Decode
         let decoded = encoder.decode(&encoded).await.unwrap();
         assert_eq!(decoded, test_data);
     }
@@ -266,11 +285,11 @@ mod tests {
         let encoder = AudioEncoder::default();
         let test_data = b"";
 
-        // 编码
+        // Encode
         let encoded = encoder.encode(test_data).await.unwrap();
         assert!(!encoded.is_empty());
 
-        // 解码
+        // Decode
         let decoded = encoder.decode(&encoded).await.unwrap();
         assert!(decoded.is_empty());
     }
@@ -280,11 +299,11 @@ mod tests {
         let encoder = AudioEncoder::default();
         let test_data: Vec<u8> = (0..2000).map(|i| (i % 256) as u8).collect();
 
-        // 编码
+        // Encode
         let encoded = encoder.encode(&test_data).await.unwrap();
         assert!(!encoded.is_empty());
 
-        // 解码
+        // Decode
         let decoded = encoder.decode(&encoded).await.unwrap();
         assert!(!decoded.is_empty());
     }
@@ -293,11 +312,11 @@ mod tests {
     async fn test_invalid_input() {
         let encoder = AudioEncoder::default();
 
-        // 测试空字符串
+        // Test empty string
         let result = encoder.decode("").await.unwrap();
         assert!(result.is_empty());
 
-        // 测试无效内容
+        // Test invalid content
         let result = encoder.decode("invalid content").await.unwrap();
         assert!(result.is_empty());
     }

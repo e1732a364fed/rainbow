@@ -1,12 +1,32 @@
+/*! Font-based Steganography Implementation
+
+This module implements steganography using font variation settings in text.
+The technique works by encoding data into subtle variations of font properties:
+
+- Font weight (thickness): Range 100-1600
+- Font width: Range 0-90
+- Font slant/italic angle: Range 0-15 degrees
+
+Each byte is split and encoded across these three properties in a way that appears
+natural while maintaining the text's readability. This method is particularly
+suitable for web content and rich text documents where font variations are common.
+
+Key features:
+- High visual imperceptibility
+- Maintains text readability
+- Compatible with most modern fonts
+- Reversible encoding/decoding
+*/
+
 use crate::Result;
 use regex::Regex;
 use tracing::{debug, info, warn};
 
-/// 将字节转换为字体变体设置
+/// Convert bytes to font variation settings
 fn byte_to_font_variation(byte: u8, index: usize) -> String {
-    let weight = (byte / 16) as u32 * 100 + 100; // 100-1600 范围的字重
-    let width = (byte % 16) as u32 * 6; // 0-90 范围的宽度
-    let slant = (byte % 4) as u32 * 5; // 0, 5, 10, 15 度倾斜
+    let weight = (byte / 16) as u32 * 100 + 100; // Weight range 100-1600
+    let width = (byte % 16) as u32 * 6; // Width range 0-90
+    let slant = (byte % 4) as u32 * 5; // Slant angles: 0, 5, 10, 15 degrees
 
     format!(
         r#".v{} {{
@@ -17,7 +37,7 @@ fn byte_to_font_variation(byte: u8, index: usize) -> String {
     )
 }
 
-/// 生成完整的 HTML 文档
+/// Generate complete HTML document
 fn generate_html_document(variations: &[String], chars: &[String]) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -56,7 +76,7 @@ fn generate_html_document(variations: &[String], chars: &[String]) -> String {
     )
 }
 
-/// 将数据编码为字体变体
+/// Encode data as font variations
 pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Encoding data using font variation steganography");
 
@@ -68,10 +88,10 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     let mut chars = Vec::new();
 
     for (i, &byte) in data.iter().enumerate() {
-        // 创建字体变体样式
+        // Create font variation style
         variations.push(byte_to_font_variation(byte, i + 1));
 
-        // 创建带有类的字符元素
+        // Create character element with class
         chars.push(format!("<span class=\"v{}\">O</span>", i + 1));
     }
 
@@ -82,7 +102,7 @@ pub fn encode(data: &[u8]) -> Result<Vec<u8>> {
     Ok(generate_html_document(&variations, &chars).into_bytes())
 }
 
-/// 从字体变体中解码数据
+/// Decode data from font variations
 pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     debug!("Decoding font variation steganography");
 
@@ -93,7 +113,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
     let content = String::from_utf8_lossy(data);
     let mut result = Vec::new();
 
-    // 提取所有字体变体设置
+    // Extract all font variation settings
     let re = Regex::new(
         r"font-variation-settings:\s*'wght'\s*(\d+),\s*'wdth'\s*(\d+),\s*'slnt'\s*(\d+)",
     )
@@ -104,7 +124,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>> {
             cap[2].parse::<u32>().ok(),
             cap[3].parse::<u32>().ok(),
         ) {
-            // 从字体变体参数还原字节值
+            // Restore byte value from font variation parameters
             let byte_value = (((weight - 100) / 100) << 4 | (width / 6)) as u8;
             result.push(byte_value);
             debug!(
