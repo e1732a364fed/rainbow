@@ -71,86 +71,78 @@ function stego.get_random_mime_type()
 end
 
 -- 编码数据到指定 MIME 类型
-function stego.encode_mime(data, mime_type)
+function stego.encode_mime(data, mime_type, use_identifier)
     logger.debug("Encoding data with MIME type: %s", mime_type)
     local encoder = get_random_encoder(mime_type)
     if encoder then
         -- 生成编码器标识信息
-        local encoder_index = 0
-        local encoders = mime_encoders[mime_type]
-        for i, e in ipairs(encoders) do
-            if e == encoder then
-                encoder_index = i
-                break
-            end
+        local result = encoder.encode(data)
+        if not result then
+            logger.warn("Failed to encode data with %s", mime_type)
+            return nil
         end
 
-        -- 将编码器索引转换为16进制（2字节）
-        local encoder_id = string.format("%02x", encoder_index)
-        -- 生成随机噪声（2字节）用于混淆
-        local noise = string.format("%02x", math.random(0, 0xFF))
-        -- 组合标识符（4字节）
-        local identifier = encoder_id .. noise
+        if use_identifier then
+            -- 获取编码器索引
+            local encoder_index = 0
+            local encoders = mime_encoders[mime_type]
+            for i, e in ipairs(encoders) do
+                if e == encoder then
+                    encoder_index = i
+                    break
+                end
+            end
 
-        -- 将编码器标识和数据一起编码
-        local result
-        if mime_type == "text/html" then
-            -- 在 HTML 注释中添加标识和数据
-            result = encoder.encode(data)
-            if result then
-                -- 确保不会覆盖原始数据
+            -- 生成标识信息
+            local encoder_id = string.format("%02x", encoder_index)
+            local noise = string.format("%02x", math.random(0, 0xFF))
+            local identifier = encoder_id .. noise
+
+            -- 根据不同 MIME 类型插入标识符
+            if mime_type == "text/html" then
                 result = result:gsub("<!%-%-(.-)%-%->", "<!--" .. identifier .. "%1-->", 1)
-            end
-        elseif mime_type == "application/json" then
-            -- 在 JSON 开头添加标识
-            result = encoder.encode(data)
-            if result then
+            elseif mime_type == "application/json" then
                 result = identifier .. result
-            end
-        elseif mime_type == "application/xml" then
-            -- 在 XML 版本信息中隐藏标识
-            result = encoder.encode(data)
-            if result then
+            elseif mime_type == "application/xml" then
                 result = result:gsub('<%?xml[^?]*%?>', '<?xml version="1.' .. identifier .. '"?>', 1)
-            end
-        elseif mime_type == "audio/wav" then
-            -- 在音频文件的元数据中隐藏标识
-            result = encoder.encode(data)
-            if result then
+            elseif mime_type == "audio/wav" then
                 result = result:gsub('(INAM)', identifier .. '%1', 1)
             end
-        end
-
-        if result then
             logger.debug("Successfully encoded %d bytes using %s (ID: %s)",
                 #result, encoder.name, encoder_id)
-            return result
+        else
+            logger.debug("Successfully encoded %d bytes using %s",
+                #result, encoder.name)
         end
-        logger.warn("Failed to encode data with %s", mime_type)
+        return result
     end
     return nil
 end
 
 -- 从指定 MIME 类型解码数据
-function stego.decode_mime(content, mime_type)
+function stego.decode_mime(content, mime_type, use_identifier)
     logger.debug("Decoding data with MIME type: %s", mime_type)
+    local encoders = mime_encoders[mime_type]
 
-    -- 尝试从内容中提取编码器标识
-    local identifier
-    if mime_type == "text/html" then
-        identifier = content:match("<!%-%-(%x%x%x%x)%-%-")
-    elseif mime_type == "application/json" then
-        identifier = content:match("^(%x%x%x%x)")
-        content = content:sub(5) -- 移除标识符
-    elseif mime_type == "application/xml" then
-        identifier = content:match('version="1%.(%x%x%x%x)"')
-    elseif mime_type == "audio/wav" then
-        identifier = content:match('(%x%x%x%x)INAM')
+    if not encoders then
+        logger.warn("No decoder found for MIME type: %s", mime_type)
+        return nil
     end
 
-    local encoders = mime_encoders[mime_type]
-    if encoders then
-        -- 如果找到标识符，优先使用对应的编码器
+    if use_identifier then
+        -- 尝试从内容中提取编码器标识
+        local identifier
+        if mime_type == "text/html" then
+            identifier = content:match("<!%-%-(%x%x%x%x)%-%-")
+        elseif mime_type == "application/json" then
+            identifier = content:match("^(%x%x%x%x)")
+            content = content:sub(5) -- 移除标识符
+        elseif mime_type == "application/xml" then
+            identifier = content:match('version="1%.(%x%x%x%x)"')
+        elseif mime_type == "audio/wav" then
+            identifier = content:match('(%x%x%x%x)INAM')
+        end
+
         if identifier then
             -- 提取编码器索引（前2字节）
             local encoder_id = tonumber(identifier:sub(1, 2), 16)
@@ -164,20 +156,18 @@ function stego.decode_mime(content, mime_type)
                 end
             end
         end
-
-        -- 如果没有找到标识符或解码失败，尝试所有编码器
-        for _, encoder in ipairs(encoders) do
-            logger.debug("Trying encoder: %s", encoder.name)
-            local result = encoder.decode(content)
-            if result and result ~= "" then
-                logger.debug("Successfully decoded %d bytes using %s", #result, encoder.name)
-                return result
-            end
-        end
-        logger.warn("All decoders failed for MIME type: %s", mime_type)
-    else
-        logger.warn("No decoder found for MIME type: %s", mime_type)
     end
+
+    -- 如果没有使用标识符或解码失败，尝试所有编码器
+    for _, encoder in ipairs(encoders) do
+        logger.debug("Trying encoder: %s", encoder.name)
+        local result = encoder.decode(content)
+        if result and result ~= "" then
+            logger.debug("Successfully decoded %d bytes using %s", #result, encoder.name)
+            return result
+        end
+    end
+    logger.warn("All decoders failed for MIME type: %s", mime_type)
     return nil
 end
 

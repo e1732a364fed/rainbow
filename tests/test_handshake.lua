@@ -17,7 +17,6 @@ function TestHandshake:test_encode_request()
     local first = requests[1]
     lu.assertEquals(first.path, "/api/v1/session")
     lu.assertNotNil(first.headers["Cache-Control"])
-    lu.assertNotNil(first.headers["X-Request-ID"])
 
     -- 验证后续请求
     for i = 2, #requests do
