@@ -1,6 +1,102 @@
 local utils = {}
 local logger = require("rainbow.logger")
 
+-- Base64 编码表
+local b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+-- 位运算辅助函数
+local function band(a, b)
+    local result = 0
+    local bitval = 1
+    while a > 0 and b > 0 do
+        if a % 2 == 1 and b % 2 == 1 then
+            result = result + bitval
+        end
+        bitval = bitval * 2
+        a = math.floor(a / 2)
+        b = math.floor(b / 2)
+    end
+    return result
+end
+
+local function rshift(a, b)
+    return math.floor(a / (2 ^ b))
+end
+
+local function lshift(a, b)
+    return a * (2 ^ b)
+end
+
+-- Base64 编码
+function utils.base64_encode(data)
+    local bytes = {}
+    local result = ""
+    for i = 1, #data do
+        bytes[i] = string.byte(data, i)
+    end
+
+    for i = 1, #bytes, 3 do
+        local b1, b2, b3 = bytes[i], bytes[i + 1], bytes[i + 2]
+
+        local c1 = rshift(b1, 2)
+        local c2 = lshift(band(b1, 3), 4)
+        local c3 = 0
+        local c4 = 0
+
+        if b2 then
+            c2 = c2 + rshift(b2, 4)
+            c3 = lshift(band(b2, 15), 2)
+            if b3 then
+                c3 = c3 + rshift(b3, 6)
+                c4 = band(b3, 63)
+            end
+        end
+
+        result = result .. b64chars:sub(c1 + 1, c1 + 1)
+        result = result .. b64chars:sub(c2 + 1, c2 + 1)
+        result = result .. (b2 and b64chars:sub(c3 + 1, c3 + 1) or '=')
+        result = result .. (b3 and b64chars:sub(c4 + 1, c4 + 1) or '=')
+    end
+
+    return result
+end
+
+-- Base64 解码
+function utils.base64_decode(data)
+    local b64dec = {}
+    for i = 1, #b64chars do
+        b64dec[b64chars:sub(i, i)] = i - 1
+    end
+
+    local result = ""
+    data = string.gsub(data, '[^' .. b64chars .. '=]', '')
+
+    for i = 1, #data - 3, 4 do
+        local c1 = b64dec[data:sub(i, i)]
+        local c2 = b64dec[data:sub(i + 1, i + 1)]
+        local c3 = b64dec[data:sub(i + 2, i + 2)]
+        local c4 = b64dec[data:sub(i + 3, i + 3)]
+
+        if c3 == nil then c3 = 0 end
+        if c4 == nil then c4 = 0 end
+
+        result = result .. string.char(
+            lshift(c1, 2) + rshift(c2, 4),
+            lshift(band(c2, 15), 4) + rshift(c3, 2),
+            lshift(band(c3, 3), 6) + c4
+        )
+    end
+
+    -- 处理填充
+    if data:sub(-2) == '==' then
+        result = result:sub(1, -3)
+    elseif data:sub(-1) == '=' then
+        result = result:sub(1, -2)
+    end
+
+    return result
+end
+
 -- 生成随机的 HTTP 头部
 function utils.generate_realistic_headers()
     logger.debug("Generating realistic HTTP headers")

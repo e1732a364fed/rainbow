@@ -1,7 +1,7 @@
 local prism_encoder = {}
 local logger = require("rainbow.logger")
 
--- 彩虹编码实现
+-- prism 编码实现
 function prism_encoder.encode(data)
     logger.debug("Encoding data using Prism steganography")
 
