@@ -5,7 +5,7 @@ local logger = require("rainbow.logger")
 local b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 -- 位运算辅助函数
-local function band(a, b)
+function utils.band(a, b)
     local result = 0
     local bitval = 1
     while a > 0 and b > 0 do
@@ -19,11 +19,11 @@ local function band(a, b)
     return result
 end
 
-local function rshift(a, b)
+function utils.rshift(a, b)
     return math.floor(a / (2 ^ b))
 end
 
-local function lshift(a, b)
+function utils.lshift(a, b)
     return a * (2 ^ b)
 end
 
@@ -38,17 +38,17 @@ function utils.base64_encode(data)
     for i = 1, #bytes, 3 do
         local b1, b2, b3 = bytes[i], bytes[i + 1], bytes[i + 2]
 
-        local c1 = rshift(b1, 2)
-        local c2 = lshift(band(b1, 3), 4)
+        local c1 = utils.rshift(b1, 2)
+        local c2 = utils.lshift(utils.band(b1, 3), 4)
         local c3 = 0
         local c4 = 0
 
         if b2 then
-            c2 = c2 + rshift(b2, 4)
-            c3 = lshift(band(b2, 15), 2)
+            c2 = c2 + utils.rshift(b2, 4)
+            c3 = utils.lshift(utils.band(b2, 15), 2)
             if b3 then
-                c3 = c3 + rshift(b3, 6)
-                c4 = band(b3, 63)
+                c3 = c3 + utils.rshift(b3, 6)
+                c4 = utils.band(b3, 63)
             end
         end
 
@@ -81,9 +81,9 @@ function utils.base64_decode(data)
         if c4 == nil then c4 = 0 end
 
         result = result .. string.char(
-            lshift(c1, 2) + rshift(c2, 4),
-            lshift(band(c2, 15), 4) + rshift(c3, 2),
-            lshift(band(c3, 3), 6) + c4
+            utils.lshift(c1, 2) + utils.rshift(c2, 4),
+            utils.lshift(utils.band(c2, 15), 4) + utils.rshift(c3, 2),
+            utils.lshift(utils.band(c3, 3), 6) + c4
         )
     end
 
