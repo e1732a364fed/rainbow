@@ -1,8 +1,9 @@
-local json_encoder = {
-    name = "json_metadata"
-}
+local json_encoder = {}
 local logger = require("rainbow.logger")
 local utils = require("rainbow.utils")
+
+-- 添加模块名称
+json_encoder.name = "json"
 
 function json_encoder.encode(data)
     logger.debug("Encoding data using JSON metadata steganography")
@@ -33,7 +34,7 @@ function json_encoder.decode(json_content)
 
     if not json_content or json_content == "" then
         logger.warn("Empty JSON content")
-        return nil
+        return ""
     end
 
     -- 记录原始内容以便调试
@@ -43,7 +44,7 @@ function json_encoder.decode(json_content)
     local encoded_data = json_content:match('"metadata":%s*"([^"]+)"')
     if not encoded_data then
         logger.warn("No metadata field found in JSON content")
-        return nil
+        return ""
     end
 
     logger.debug("Found encoded data: %s", encoded_data)
@@ -52,7 +53,7 @@ function json_encoder.decode(json_content)
     local decoded = utils.base64_decode(encoded_data)
     if not decoded then
         logger.error("Failed to decode base64 data")
-        return nil
+        return ""
     end
 
     logger.info("Successfully decoded %d bytes from JSON metadata", #decoded)

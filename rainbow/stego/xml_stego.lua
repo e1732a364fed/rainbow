@@ -2,6 +2,9 @@ local xml_encoder = {}
 local logger = require("rainbow.logger")
 local utils = require("rainbow.utils")
 
+-- 添加模块名称
+xml_encoder.name = "xml"
+
 function xml_encoder.encode(data)
     logger.debug("Encoding data using XML steganography")
     -- 创建一个看起来像配置文件的 XML 结构

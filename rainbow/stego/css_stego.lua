@@ -1,11 +1,20 @@
 local css_encoder = {}
 local logger = require("rainbow.logger")
 
+-- 添加模块名称
+css_encoder.name = "css"
+
 function css_encoder.encode(data)
-    logger.debug("Encoding data using CSS animation steganography")
+    logger.debug("Encoding data using CSS animation steganography: " .. tostring(#(data or "")))
+
+    -- 如果数据为 nil，抛出错误
+    if data == nil then
+        error("Invalid input: data cannot be nil")
+    end
 
     -- 如果数据为空，返回基本结构
     if #data == 0 then
+        logger.warn("Empty data provided for encoding")
         return [[<!DOCTYPE html>
 <html><head><title>Empty Page</title></head><body><div class="content"></div></body></html>]]
     end
@@ -32,6 +41,8 @@ function css_encoder.encode(data)
     local binary_data = to_binary(data)
     local css_animations = {}
     local elements = {}
+
+    logger.debug("Converting " .. #data .. " bytes to " .. #binary_data .. " bits")
 
     for i = 1, #binary_data, 8 do
         local chunk = table.concat(binary_data, "", i, math.min(i + 7, #binary_data))
@@ -81,7 +92,7 @@ function css_encoder.encode(data)
 </body>
 </html>]]
 
-    logger.info("Generated CSS steganography with %d animations", #binary_data / 8)
+    logger.info("Generated CSS steganography with " .. math.floor(#binary_data / 8) .. " animations")
     return string.format(template,
         table.concat(css_animations, "\n"),
         "Experience smooth animations and transitions.",
@@ -90,9 +101,16 @@ function css_encoder.encode(data)
 end
 
 function css_encoder.decode(html_content)
-    logger.debug("Decoding CSS animation steganography")
+    logger.debug("Decoding CSS animation steganography from " .. tostring(#(html_content or "")))
 
-    if not html_content or html_content == "" then
+    -- 如果输入为 nil，抛出错误
+    if html_content == nil then
+        error("Invalid input: html_content cannot be nil")
+    end
+
+    -- 如果输入为空字符串，返回空结果
+    if html_content == "" then
+        logger.warn("Empty content provided for decoding")
         return ""
     end
 
@@ -118,7 +136,7 @@ function css_encoder.decode(html_content)
 
     local decoded = table.concat(result)
     if #decoded > 0 then
-        logger.info("Successfully decoded %d bytes", #decoded)
+        logger.info("Successfully decoded " .. #decoded .. " bytes")
     else
         logger.warn("No data found in CSS animations")
     end

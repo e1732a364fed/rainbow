@@ -1,6 +1,9 @@
-local audio_stego = {}
+local audio_encoder = {}
 local logger = require("rainbow.logger")
 local utils = require("rainbow.utils")
+
+-- 添加模块名称
+audio_encoder.name = "audio"
 
 -- 音频参数配置
 local config = {
@@ -128,7 +131,7 @@ local function extract_data(samples)
 end
 
 -- 编码函数
-function audio_stego.encode(data)
+function audio_encoder.encode(data)
     logger.debug("Encoding data using Web Audio API stego")
 
     if #data == 0 then
@@ -155,7 +158,7 @@ function audio_stego.encode(data)
 end
 
 -- 解码函数
-function audio_stego.decode(content)
+function audio_encoder.decode(content)
     logger.debug("Decoding data from Web Audio API stego")
 
     if not content or content == "" then
@@ -204,4 +207,4 @@ function audio_stego.decode(content)
     return data
 end
 
-return audio_stego
+return audio_encoder

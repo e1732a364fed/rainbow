@@ -1,6 +1,9 @@
-local rss_stego = {}
+local rss_encoder = {}
 local logger = require("rainbow.logger")
 local utils = require("rainbow.utils")
+
+-- 添加模块名称
+rss_encoder.name = "rss"
 
 -- RSS Feed 模板
 local RSS_TEMPLATE = [[
@@ -32,7 +35,7 @@ local function get_rfc822_date()
 end
 
 -- 编码函数
-function rss_stego.encode(data)
+function rss_encoder.encode(data)
     logger.debug("Encoding data using RSS stego")
 
     -- 确保 data 不是 nil
@@ -56,7 +59,7 @@ function rss_stego.encode(data)
 end
 
 -- 解码函数
-function rss_stego.decode(content)
+function rss_encoder.decode(content)
     logger.debug("Decoding data from RSS stego")
 
     -- 处理无效输入
@@ -92,4 +95,4 @@ function rss_stego.decode(content)
     return decoded
 end
 
-return rss_stego
+return rss_encoder

@@ -1,6 +1,9 @@
 local svg_encoder = {}
 local logger = require("rainbow.logger")
 
+-- 添加模块名称
+svg_encoder.name = "svg_path"
+
 function svg_encoder.encode(data)
     logger.debug("Encoding data using SVG path animation steganography")
 

@@ -1,5 +1,5 @@
 local lu = require("luaunit")
-local font = require("rainbow.font_variant_stego")
+local font = require("rainbow.stego.font_stego")
 local utils = require("rainbow.utils")
 
 TestFontVariantStego = {}

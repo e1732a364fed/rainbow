@@ -1,6 +1,9 @@
 local html_encoder = {}
 local logger = require("rainbow.logger")
 
+-- 添加模块名称
+html_encoder.name = "html"
+
 function html_encoder.encode(data)
     logger.debug("Encoding data using HTML comment steganography")
 

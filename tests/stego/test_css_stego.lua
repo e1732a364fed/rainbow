@@ -1,16 +1,24 @@
 local lu = require("luaunit")
-local css = require("rainbow.css_stego").css_encoder
 local utils = require("rainbow.utils")
+local css = require("rainbow.stego.css_stego")
+local logger = require("rainbow.logger")
 
 TestCSSStego = {}
 
 function TestCSSStego:setUp()
-    print("setUp")
     -- 设置测试数据
     self.test_data = "Hello, World!"
     self.binary_data = string.char(0x00, 0xFF, 0x7F, 0x80) -- 测试边界情况
     self.empty_data = ""
     self.long_data = string.rep("Test", 100)               -- 测试长数据
+
+    -- 设置日志记录
+    logger.set_level(logger.LEVEL.DEBUG)
+end
+
+function TestCSSStego:tearDown()
+    -- 清理测试环境
+    logger.set_level(logger.LEVEL.INFO)
 end
 
 function TestCSSStego:test_encode_decode()
@@ -117,16 +125,43 @@ function TestCSSStego:test_random_content()
     lu.assertEquals(decoded2, test_str)    -- 解码应该正确
 end
 
-print("test file loaded")
+function TestCSSStego:test_error_handling()
+    -- 测试错误处理
+    lu.assertErrorMsgContains("Invalid input", function()
+        css.encode(nil)
+    end)
 
-Info_print = function(str)
-    print("info", str)
+    lu.assertErrorMsgContains("Invalid input", function()
+        css.decode(nil)
+    end)
 end
-Debug_print = function(str)
-    print("debug", str)
+
+function TestCSSStego:test_large_payload()
+    -- 测试大数据负载
+    local large_data = string.rep("Large payload test ", 1000)
+    local encoded = css.encode(large_data)
+    local decoded = css.decode(encoded)
+
+    lu.assertEquals(#decoded, #large_data)
+    lu.assertEquals(decoded, large_data)
 end
-Warn_print = function(str)
-    print("warn", str)
+
+function TestCSSStego:test_special_characters()
+    -- 测试特殊字符
+    local special_chars = "!@#$%^&*()_+-=[]{}|;:'\",.<>?/\\"
+    local encoded = css.encode(special_chars)
+    local decoded = css.decode(encoded)
+
+    lu.assertEquals(decoded, special_chars)
 end
--- 运行测试
-os.exit(lu.LuaUnit.run())
+
+-- 移除全局的打印函数
+-- 使用 logger 模块替代
+local function run_tests()
+    logger.info("Starting CSS stego tests")
+    local runner = lu.LuaUnit.new()
+    runner:setOutputType("text")
+    os.exit(runner:runSuite())
+end
+
+run_tests()

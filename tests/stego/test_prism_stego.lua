@@ -1,5 +1,5 @@
 local lu = require("luaunit")
-local prism = require("rainbow.prism_stego")
+local prism = require("rainbow.stego").prism
 
 TestPrismStego = {}
 

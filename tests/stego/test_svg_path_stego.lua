@@ -1,5 +1,5 @@
 local lu = require("luaunit")
-local svg = require("rainbow.svg_path_stego")
+local svg = require("rainbow.stego").svg
 local utils = require("rainbow.utils")
 
 TestSVGPathStego = {}
