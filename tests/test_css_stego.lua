@@ -19,6 +19,7 @@ function TestCSSStego:test_encode_decode()
     local encoded = css.encode(self.test_data)
     local decoded = css.decode(encoded)
     print("Original:", utils.hex_dump(self.test_data))
+    print("Encoded:", encoded)
     print("Decoded:", utils.hex_dump(decoded))
     lu.assertEquals(decoded, self.test_data)
 end
@@ -68,13 +69,24 @@ end
 
 function TestCSSStego:test_animation_structure()
     print("test_animation_structure")
-    -- 测试生成的动画结构
-    local encoded = css.encode("A") -- 单个字符测试
-    -- 检查是否包含正确的动画属性
-    lu.assertStrContains(encoded, "animation:")
+    local encoded = css.encode("test")
+
+    -- 检查基本的 HTML 结构
+    lu.assertStrContains(encoded, "<!DOCTYPE html>")
+    lu.assertStrContains(encoded, "<html>")
+    lu.assertStrContains(encoded, "</html>")
+
+    -- 检查 CSS 动画定义
+    lu.assertStrContains(encoded, "@keyframes")
     lu.assertStrContains(encoded, "opacity: 1")
-    -- 检查延迟时间格式
-    lu.assertStrMatches(encoded, "animation%-delay:%s*[%d%.]+s")
+
+    -- 检查动画属性
+    lu.assertStrContains(encoded, "animation:")
+    lu.assertStrContains(encoded, "animation-delay:")
+
+    -- 检查动画延迟值格式（支持多个值的情况）
+    local has_delays = encoded:match("animation%-delay:%s*[%d%.]+s[,%s*%d%.]+s*")
+    lu.assertNotNil(has_delays, "Animation delay values not found in expected format")
 end
 
 function TestCSSStego:test_decode_invalid_input()
