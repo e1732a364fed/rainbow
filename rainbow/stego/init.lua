@@ -6,7 +6,8 @@ local mime_types = {
     basic = {
         ["text/html"] = true,
         ["application/json"] = true,
-        ["application/xml"] = true
+        ["application/xml"] = true,
+        ["audio/wav"] = true
     }
 }
 
@@ -24,6 +25,7 @@ stego.html = require("rainbow.stego.html_stego")
 stego.json = require("rainbow.stego.json_stego")
 stego.xml = require("rainbow.stego.xml_stego")
 stego.rss = require("rainbow.stego.rss_stego")
+stego.audio = require("rainbow.stego.audio_stego")
 
 -- MIME 类型编码器映射
 -- 每个标准 MIME 类型对应一个编码器数组
@@ -41,6 +43,9 @@ local mime_encoders = {
     ["application/xml"] = {
         stego.xml,
         stego.rss
+    },
+    ["audio/wav"] = {
+        stego.audio
     }
 }
 

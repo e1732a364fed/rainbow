@@ -1,69 +1,74 @@
-local rss_encoder = {}
+local rss_stego = {}
 local logger = require("rainbow.logger")
-local mime = require("rainbow.stego.mime_manager")
+local utils = require("rainbow.utils")
 
-function rss_encoder.encode(data)
-    logger.debug("Encoding data using RSS steganography")
-    -- 创建一个看起来像普通 RSS feed 的结构
-    local rss_template = [[
-<?xml version="1.0" encoding="UTF-8"?>
+-- RSS Feed 模板
+local RSS_TEMPLATE = [[
+<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
-    <channel>
-        <title>%s</title>
-        <description>%s</description>
-        <link>https://example.com/feed</link>
-        <lastBuildDate>%s</lastBuildDate>
-        <item>
-            <title>%s</title>
-            <description>%s</description>
-            <pubDate>%s</pubDate>
-            <guid>%s</guid>
-        </item>
-    </channel>
+<channel>
+    <title>Rainbow RSS Feed</title>
+    <link>http://example.com/feed</link>
+    <description>A steganographic RSS feed</description>
+    <language>en-us</language>
+    <pubDate>%s</pubDate>
+    <lastBuildDate>%s</lastBuildDate>
+    <docs>http://blogs.law.harvard.edu/tech/rss</docs>
+    <generator>Rainbow RSS Generator</generator>
+    <item>
+        <title>Hidden Data</title>
+        <link>http://example.com/item/1</link>
+        <description>This item contains hidden data</description>
+        <pubDate>%s</pubDate>
+        <guid>%s</guid>
+    </item>
+</channel>
 </rss>
 ]]
 
-    -- 生成随机的 RSS 内容
-    local titles = {
-        "Latest Updates", "Daily News", "Tech Blog",
-        "Community Updates", "Product News"
-    }
+-- 生成 RFC822 格式的日期字符串
+local function get_rfc822_date()
+    return os.date("!%a, %d %b %Y %H:%M:%S GMT")
+end
 
-    local descriptions = {
-        "Stay updated with our latest news and announcements.",
-        "Check out our recent developments and updates.",
-        "Important information for our community members."
-    }
+-- 编码函数
+function rss_stego.encode(data)
+    logger.debug("Encoding data using RSS stego")
 
-    -- 在 guid 中隐藏编码后的数据
-    local encoded_data = mime.base64_encode(data)
-    local guid = "tag:example.com," .. os.date("%Y") .. ":" .. encoded_data
+    -- Base64 编码数据
+    local encoded_data = utils.base64_encode(data)
 
-    logger.info("Generated RSS feed with GUID length: %d", #encoded_data)
-    return string.format(rss_template,
-        titles[math.random(#titles)],
-        descriptions[math.random(#descriptions)],
-        os.date("!%a, %d %b %Y %H:%M:%S GMT"),
-        titles[math.random(#titles)],
-        descriptions[math.random(#descriptions)],
-        os.date("!%a, %d %b %Y %H:%M:%S GMT"),
-        guid
+    -- 获取当前时间
+    local current_time = get_rfc822_date()
+
+    -- 生成 RSS feed
+    return string.format(RSS_TEMPLATE,
+        current_time, -- pubDate
+        current_time, -- lastBuildDate
+        current_time, -- item pubDate
+        encoded_data  -- guid (contains hidden data)
     )
 end
 
-function rss_encoder.decode(rss_content)
-    logger.debug("Decoding RSS steganography")
-    -- 从 guid 中提取编码的数据
-    local encoded_data = rss_content:match("tag:example%.com,%d+:([^<]+)")
+-- 解码函数
+function rss_stego.decode(content)
+    logger.debug("Decoding data from RSS stego")
+
+    -- 从 GUID 标签中提取数据
+    local encoded_data = content:match("<guid>([^<]+)</guid>")
     if not encoded_data then
-        logger.warn("No encoded data found in RSS GUID")
-        return ""
+        logger.error("No GUID found in RSS content")
+        return nil
     end
-    local decoded_data = mime.base64_decode(encoded_data)
-    if decoded_data then
-        logger.info("Successfully decoded %d bytes from RSS", #decoded_data)
+
+    -- Base64 解码数据
+    local decoded = utils.base64_decode(encoded_data)
+    if not decoded then
+        logger.error("Failed to decode Base64 data from RSS")
+        return nil
     end
-    return decoded_data
+
+    return decoded
 end
 
-return rss_encoder
+return rss_stego

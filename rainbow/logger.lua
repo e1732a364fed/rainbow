@@ -34,4 +34,6 @@ function logger.warn(message, ...)
     end
 end
 
+logger.error = logger.warn
+
 return logger
