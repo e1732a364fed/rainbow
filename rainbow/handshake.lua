@@ -10,82 +10,77 @@ local handshake = {}
 local function encode_target_address(address)
     -- 地址格式: protocol://host:port
     -- 例如: tcp://example.com:443
-    local parts = {}
-
-    -- 将地址信息编码为字节序列
-    for c in address:gmatch(".") do
-        table.insert(parts, string.format("%02x", string.byte(c)))
-    end
-
-    return table.concat(parts)
+    return utils.base64_encode(address)
 end
 
 -- 目标地址结构解码器
 local function decode_target_address(encoded)
     local result = {}
 
-    for i = 1, #encoded, 2 do
-        local hex = encoded:sub(i, i + 1)
-        table.insert(result, string.char(tonumber(hex, 16)))
+    -- 先将 Base64 解码为原始字符串
+    local decoded = utils.base64_decode(encoded)
+    if not decoded then
+        return nil
     end
 
-    return table.concat(result)
+    return decoded
 end
 
--- 生成握手请求
-function handshake.encode_request(target_address)
-    logger.debug("Encoding handshake request for target: %s", target_address)
+-- 编码握手请求
+function handshake.encode_request(target)
+    logger.debug("Encoding handshake request for target: %s", target)
 
     -- 编码目标地址
-    local encoded_address = encode_target_address(target_address)
+    local encoded_target = encode_target_address(target)
+    if not encoded_target then
+        logger.error("Failed to encode target address")
+        return nil
+    end
 
-    -- 生成握手序列
-    local write_seq, read_seq = sequence.generate_sequence(encoded_address, true)
+    -- 生成请求序列
+    local write_seq, read_seq = sequence.generate_sequence(encoded_target, true)
+    if not write_seq then
+        logger.error("Failed to generate sequence")
+        return nil
+    end
 
     -- 构建请求序列
     local requests = {}
     local response_lengths = {}
 
-    -- 第一个请求包含特殊的握手标记
-    local first_request = {
-        headers = utils.generate_realistic_headers(),
-        data = write_seq[1],
-        expected_response_length = read_seq[1],
-        path = "/api/v1/session"
-    }
-
-    -- 添加一些额外的随机头部来增加隐蔽性
-    first_request.headers["Cache-Control"] = "no-cache"
-    first_request.headers["X-Request-ID"] = string.format("%x", math.random(0, 0xFFFFFFFF))
-
-    table.insert(requests, first_request)
-    table.insert(response_lengths, read_seq[1])
-
-    -- 后续请求
-    for i = 2, #write_seq do
+    for i, chunk in ipairs(write_seq) do
+        -- 使用 JSON 编码器
         local request = {
+            mime_type = "application/json",
             headers = utils.generate_realistic_headers(),
-            data = write_seq[i],
-            expected_response_length = read_seq[i],
-            path = "/api/v1/data"
+            path = i == 1 and "/api/v1/session" or "/api/v1/data"
         }
+
+        -- 为第一个请求添加特殊头部
+        if i == 1 then
+            request.headers["Cache-Control"] = "no-cache"
+            request.headers["X-Request-ID"] = utils.generate_uuid()
+        end
+
+        -- 编码数据
+        request.content = stego.encode_mime(chunk, request.mime_type)
+        if not request.content then
+            logger.error("Failed to encode chunk %d", i)
+            return nil
+        end
+
+        -- 记录调试信息
+        logger.debug("Generated request %d:", i)
+        logger.debug("  MIME type: %s", request.mime_type)
+        logger.debug("  Content length: %d", #request.content)
+
         table.insert(requests, request)
         table.insert(response_lengths, read_seq[i])
     end
 
-    -- 使用随机的 MIME 类型来编码每个请求的内容
-    for _, request in ipairs(requests) do
-        local mime_type = stego.get_random_mime_type()
-        local content, encoder = stego.encode_mime(request.data, mime_type)
-        if content then
-            request.mime_type = mime_type
-            request.content = content
-            request.encoder = encoder -- 保存使用的编码器以便解码时使用
-        else
-            -- 如果编码失败，使用纯文本
-            request.mime_type = "text/plain"
-            request.content = request.data
-        end
+    if #requests == 0 then
+        logger.error("No requests generated")
+        return nil
     end
 
     logger.info("Generated handshake request with %d packets", #requests)

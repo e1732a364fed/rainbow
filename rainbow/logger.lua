@@ -55,4 +55,21 @@ end
 
 logger.error = logger.warn
 
+-- 添加调试信息的辅助函数
+function logger.dump_packet(packet, prefix)
+    prefix = prefix or ""
+    logger.debug("%sPacket length: %d", prefix, #packet)
+    logger.debug("%sHeaders:", prefix)
+    for name, value in packet:gmatch("([^:]+):%s*([^\r\n]+)") do
+        logger.debug("%s  %s: %s", prefix, name, value)
+    end
+end
+
+-- 添加错误追踪
+function logger.error_trace(message, ...)
+    local info = debug.getinfo(2, "Sl")
+    local location = string.format("%s:%d", info.short_src, info.currentline)
+    logger.error("[%s] " .. message, location, ...)
+end
+
 return logger

@@ -158,7 +158,13 @@ end
 function audio_stego.decode(content)
     logger.debug("Decoding data from Web Audio API stego")
 
+    if not content or content == "" then
+        logger.warn("Empty audio content")
+        return ""
+    end
+
     if content:match("^%s*<audio[^>]*>%s*</audio>%s*$") then
+        logger.debug("Empty audio element found")
         return ""
     end
 
@@ -169,35 +175,33 @@ function audio_stego.decode(content)
         return nil
     end
 
-    -- 解码音频数据
-    local audio_data = utils.base64_decode(base64_data)
-    if not audio_data then
-        logger.error("Failed to decode Base64 data")
+    -- 解码 Base64 数据
+    local decoded = utils.base64_decode(base64_data)
+    if not decoded then
+        logger.error("Failed to decode base64 audio data")
         return nil
     end
 
-    -- 将字符串转换为数值数组
+    -- 将解码后的数据转换为样本数组
     local samples = {}
-    for sample in audio_data:gmatch("[^,]+") do
-        local num = tonumber(sample)
-        if num then
-            table.insert(samples, num)
-        end
+    for sample in decoded:gmatch("[^,]+") do
+        table.insert(samples, tonumber(sample))
     end
 
     if #samples == 0 then
-        logger.error("No valid samples found in audio data")
+        logger.error("No valid audio samples found")
         return nil
     end
 
     -- 从音频波形中提取数据
-    local decoded = extract_data(samples)
-    if not decoded then
+    local data = extract_data(samples)
+    if not data then
         logger.error("Failed to extract data from audio samples")
         return nil
     end
 
-    return decoded
+    logger.info("Successfully decoded %d bytes from audio", #data)
+    return data
 end
 
 return audio_stego

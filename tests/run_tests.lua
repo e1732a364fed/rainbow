@@ -5,6 +5,7 @@ require("tests.test_encoder")
 require("tests.test_error")
 require("tests.test_logger")
 require("tests.test_handshake")
+require("tests.test_main")
 
 -- 运行所有测试
 os.exit(lu.LuaUnit.run())

@@ -45,6 +45,11 @@ function sequence.generate_sequence(data, is_write)
         logger.info("Generated read sequence with %d chunks", #chunks)
     end
 
+    -- 确保 read_sequence 不为空
+    if #read_sequence == 0 then
+        read_sequence = { 500 } -- 默认响应长度
+    end
+
     return write_sequence, read_sequence
 end
 

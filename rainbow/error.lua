@@ -3,23 +3,23 @@ local error_handler = {}
 -- 错误类型定义
 error_handler.ERROR_TYPE = {
     INVALID_DATA = "INVALID_DATA",
-    COMPRESSION_ERROR = "COMPRESSION_ERROR",
-    ENCODING_ERROR = "ENCODING_ERROR",
-    DECODING_ERROR = "DECODING_ERROR",
-    HANDSHAKE_ERROR = "HANDSHAKE_ERROR",
+    ENCODE_FAILED = "ENCODE_FAILED",
+    DECODE_FAILED = "DECODE_FAILED",
     PROTOCOL_ERROR = "PROTOCOL_ERROR",
-    LENGTH_MISMATCH = "LENGTH_MISMATCH"
+    UNKNOWN_ERROR = "UNKNOWN_ERROR",
+    LENGTH_MISMATCH = "LENGTH_MISMATCH",
+    COMPRESSION_ERROR = "COMPRESSION_ERROR"
 }
 
 -- 错误消息模板
 local error_messages = {
     [error_handler.ERROR_TYPE.INVALID_DATA] = "Invalid data format: %s",
-    [error_handler.ERROR_TYPE.COMPRESSION_ERROR] = "Compression failed: %s",
-    [error_handler.ERROR_TYPE.ENCODING_ERROR] = "Encoding failed: %s",
-    [error_handler.ERROR_TYPE.DECODING_ERROR] = "Decoding failed: %s",
-    [error_handler.ERROR_TYPE.HANDSHAKE_ERROR] = "Handshake failed: %s",
+    [error_handler.ERROR_TYPE.ENCODE_FAILED] = "Failed to encode data: %s",
+    [error_handler.ERROR_TYPE.DECODE_FAILED] = "Failed to decode data: %s",
     [error_handler.ERROR_TYPE.PROTOCOL_ERROR] = "Protocol error: %s",
-    [error_handler.ERROR_TYPE.LENGTH_MISMATCH] = "Length mismatch: expected %d, got %d"
+    [error_handler.ERROR_TYPE.UNKNOWN_ERROR] = "Unknown error: %s",
+    [error_handler.ERROR_TYPE.LENGTH_MISMATCH] = "Length mismatch: expected %d, got %d",
+    [error_handler.ERROR_TYPE.COMPRESSION_ERROR] = "Compression error: %s"
 }
 
 -- 创建错误对象
@@ -37,6 +37,7 @@ function error_handler.create_error(error_type, ...)
 
     return {
         type = error_type,
+        code = error_type,
         message = message,
         timestamp = os.time()
     }
@@ -52,13 +53,13 @@ end
 
 -- 包装函数调用，处理错误
 function error_handler.try(func, ...)
-    local success, result = pcall(func, ...)
+    local success, result, extra = pcall(func, ...)
     if not success then
         -- 从错误消息中提取实际的错误信息
         local error_msg = tostring(result):match(":%d+:%s*(.+)") or tostring(result)
         return error_handler.create_error(error_handler.ERROR_TYPE.PROTOCOL_ERROR, error_msg)
     end
-    return result
+    return result, extra
 end
 
 return error_handler

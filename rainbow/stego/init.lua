@@ -78,8 +78,8 @@ function stego.encode_mime(data, mime_type)
         local result = encoder.encode(data)
         if result then
             logger.debug("Successfully encoded %d bytes using %s", #result, encoder.name or "unknown encoder")
-            -- 记住使用的编码器
-            return result, encoder
+            -- 返回编码器名称而不是对象
+            return result, encoder.name
         end
         logger.warn("Failed to encode data with %s", mime_type)
     else
@@ -91,24 +91,32 @@ end
 -- 从指定 MIME 类型解码数据
 function stego.decode_mime(content, mime_type, preferred_encoder)
     logger.debug("Decoding data with MIME type: %s", mime_type)
+    if preferred_encoder then
+        logger.debug("Using preferred encoder: %s", preferred_encoder)
+    end
+
     -- 尝试该 MIME 类型下的所有解码器
     local encoders = mime_encoders[mime_type]
     if encoders then
         -- 如果有首选编码器，先尝试它
         if preferred_encoder then
-            local result = preferred_encoder.decode(content)
-            if result then
-                logger.debug("Successfully decoded %d bytes using preferred encoder", #result)
-                return result
+            for _, encoder in ipairs(encoders) do
+                if encoder.name == preferred_encoder then
+                    local result = encoder.decode(content)
+                    if result then
+                        logger.debug("Successfully decoded %d bytes using preferred encoder", #result)
+                        return result
+                    end
+                end
             end
         end
 
         -- 如果首选编码器失败或不存在，尝试其他编码器
         for _, encoder in ipairs(encoders) do
-            if encoder ~= preferred_encoder then
+            if not preferred_encoder or encoder.name ~= preferred_encoder then
                 local result = encoder.decode(content)
                 if result then
-                    logger.debug("Successfully decoded %d bytes", #result)
+                    logger.debug("Successfully decoded %d bytes using %s", #result, encoder.name or "unknown encoder")
                     return result
                 end
             end
