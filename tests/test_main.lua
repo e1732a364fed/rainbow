@@ -21,6 +21,7 @@ function TestMain:test_handshake_encode_decode()
     lu.assertNotNil(packets)
     lu.assertNotNil(lengths)
     lu.assertTrue(#packets > 0)
+    -- print(packets[1])
 
     -- 验证基本头部
     for _, packet in ipairs(packets) do

@@ -62,7 +62,7 @@ local function build_http_request(headers, content, mime_type, path)
         headers["Accept"] = "image/png,image/*;q=0.8,*/*;q=0.5"
     elseif path:match("^/api/") then
         headers["Accept"] = "application/json"
-        headers["X-Requested-With"] = "XMLHttpRequest"
+        -- headers["X-Requested-With"] = "XMLHttpRequest"
     end
 
     -- 添加所有头部（按字母顺序）
@@ -172,7 +172,7 @@ function rainbow.encode(data, is_client, packet_type, force_mime_type)
                 local headers = utils.generate_realistic_headers()
 
                 -- 使用 stego 模块进行编码
-                local encoded_content, encoder = stego.encode_mime(chunk, mime_type)
+                local encoded_content = stego.encode_mime(chunk, mime_type)
                 if not encoded_content then
                     return error_handler.create_error(
                         error_handler.ERROR_TYPE.ENCODE_FAILED,

@@ -59,7 +59,6 @@ function handshake.encode_request(target)
         -- 为第一个请求添加特殊头部
         if i == 1 then
             request.headers["Cache-Control"] = "no-cache"
-            request.headers["X-Request-ID"] = utils.generate_uuid()
         end
 
         -- 编码数据
